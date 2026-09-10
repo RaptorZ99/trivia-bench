@@ -70,9 +70,10 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **Réseau d'entreprise** [VÉRIFIÉ] | Le réseau du bureau (Cato Networks) **bloque `opentdb.com`** (page de blocage HTTP 403, catégorie « Games ») et intercepte le TLS (CA « Cato Networks Root CA », absente des trousseaux macOS). PyPI, GitHub, Hugging Face, hub dbt et sites de doc sont accessibles avec un TLS normal. | Le scraping (≈ 25 min) doit être lancé **depuis un autre réseau** (domicile, partage de connexion mobile). Le scraper est conçu pour reprendre après interruption. |
 | **Volume OpenTDB** [DOC, via proxy de lecture] | 5 298 questions « verified » (seul pool servi par l'API) sur 21 617 en base, 24 catégories (IDs 9 à 32), 50 questions max par appel, 1 appel / 5 s / IP. | 117 appels de données + 26 appels de service ≈ 12 min incompressibles, 20 à 35 min en pratique. |
 | **Machine** [VÉRIFIÉ] | 16 Go unifiés. Gemma 4 12B QAT Q4_0 : 7,15 Go sur disque, **7,49 Gio estimés** en mémoire avec un contexte de 4 096 tokens. | Contexte limité à 4 096 tokens, un seul modèle chargé, exécution séquentielle. |
+| **Format des modèles** [VÉRIFIÉ] | LM Studio sert les modèles GGUF par `llama.cpp` et les modèles MLX par `mlx-llm`, deux moteurs aux performances différentes. Le build MLX de la famille `qwen3_5` ignore la longueur de contexte demandée : son ajustement automatique la réécrit vers ce que la mémoire permet (32 768 obtenus pour 4 096 demandés). | Les deux modèles évalués sont chargés en **GGUF**, avec le même contexte et le même moteur : sans quoi l'écart de latence entre modèles mesurerait aussi l'écart entre moteurs. |
 | **LM Studio** [VÉRIFIÉ] | Application 0.4.24, runtime `llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0`, CLI `lms` dans `~/.lmstudio/bin` (pas dans le `PATH`). Serveur local sur le port 1234. Clé du modèle : `google/gemma-4-12b-qat`, architecture `gemma4`, contexte max 262 144. | Le Makefile et la CLI utilisent le chemin complet de `lms`. |
 | **Gemma 4 « thinking »** [VÉRIFIÉ] | Le raisonnement est **actif par défaut**. Sans le désactiver, le modèle consomme tout son budget de tokens en raisonnement et ne répond pas (voir annexe A). Il se désactive **par requête** avec `reasoning: "off"` (API REST native `/api/v1/chat`) ou `reasoning_effort: "none"` (endpoint compatible OpenAI). Le SDK Python `lmstudio` 1.5.0 (dernière version stable, août 2025) **ne peut pas** le désactiver et laisse fuiter un marqueur interne dans le texte de réponse. | Le client LLM utilise l'API REST de LM Studio via `httpx` (ADR-04). |
-| **Sortie structurée** [VÉRIFIÉ] | L'endpoint natif `/api/v1/chat` **rejette** `response_format` (HTTP 400 `unrecognized_keys`). L'endpoint OpenAI `/v1/chat/completions` accepte `response_format` de type `json_schema` **et** `reasoning_effort: "none"` simultanément. | La variante « JSON structuré » passe par l'endpoint OpenAI ; les autres par l'endpoint natif, qui renvoie en plus TTFT et tokens/s. |
+| **Sortie structurée et statistiques** [VÉRIFIÉ] | LM Studio expose trois endpoints de complétion. `/api/v1/chat` rejette `response_format` (HTTP 400 `unrecognized_keys`). `/v1/chat/completions` l'accepte mais ne renvoie aucun bloc `stats`. `/api/v0/chat/completions` accepte `response_format` de type `json_schema` **et** `reasoning_effort: "none"`, **et** renvoie `stats` (temps au premier token, débit) ainsi que `model_info` et `runtime`. | Toutes les variantes passent par `/api/v0/chat/completions` : c'est le seul endpoint qui donne format contraint et statistiques moteur dans le même appel, donc le seul qui rende les variantes comparables entre elles. |
 | **Calendrier** | Sessions les 10, 11 et 30 septembre 2026. | Les runs longs (≈ 4 h de machine) se font entre les sessions ; tout est reprenable. |
 
 ### 1.3 Objectifs de qualité
@@ -91,7 +92,7 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **ADR-01** | Médaillon sur fichiers locaux : bronze = CSV + JSONL bruts, silver = Parquet (compression zstd), gold = fichier `.duckdb` construit par dbt. | Base Postgres, SQLite | Imposé par les consignes ; aucun serveur à opérer ; DuckDB lit le Parquet nativement [DOC]. |
 | **ADR-02** | Projet `uv` unique, `src/` layout, package `trivia_bench`, CLI Typer `trivia` avec une commande par étape (`scrape`, `clean`, `check`, `bench`, `grade`, `build`, `dashboard`). | Poetry, notebooks, scripts épars | `uv` déjà installé (0.10.11), lockfile reproductible, `uv sync` unique pour un coéquipier [DOC]. |
 | **ADR-03** | Polars pour toute la manipulation de données du pipeline ; pandas n'apparaît que comme dépendance transitive de Streamlit. Le dashboard lit DuckDB en Polars (`.pl()`). | pandas partout | Polars écrit le Parquet sans PyArrow, typage fort (`pl.Enum`, `pl.List`), interop DuckDB directe (`.pl()`) [VÉRIFIÉ]. Plotly Express 6.9 accepte les DataFrames Polars (via Narwhals), y compris pour `error_y` [VÉRIFIÉ]. |
-| **ADR-04** | **Client LLM = API REST de LM Studio via `httpx`** : endpoint natif `POST /api/v1/chat` pour les variantes texte (champ `reasoning: "off"`, stats TTFT/tokens/s), endpoint `POST /v1/chat/completions` pour la variante JSON structuré (`reasoning_effort: "none"` + `response_format: json_schema`). Le SDK `lmstudio` n'est pas utilisé pour l'inférence. | SDK Python `lmstudio` (`model.respond`) ; package `openai` | Le SDK 1.5.0 n'expose aucun champ pour désactiver le raisonnement de Gemma 4 et renvoie le raisonnement mélangé à la réponse avec un marqueur interne [VÉRIFIÉ, annexe A]. L'API REST est l'API officielle « développeur » de LM Studio, pilotée depuis Python. Le package `openai` n'apporte rien de plus que `httpx` ici et masquerait les champs spécifiques LM Studio. |
+| **ADR-04** | **Client LLM = API REST de LM Studio via `httpx`, endpoint unique `POST /api/v0/chat/completions`** pour toutes les variantes : `reasoning_effort: "none"`, `response_format: json_schema` quand la variante l'exige, et bloc `stats` renvoyé dans tous les cas. Le SDK `lmstudio` n'est pas utilisé pour l'inférence. | `/api/v1/chat` ; `/v1/chat/completions` ; SDK Python `lmstudio` ; package `openai` | Un seul endpoint pour toutes les variantes est la condition d'une comparaison valide : mesurer une variante par un chemin et les autres par un second produirait des colonnes qui ne veulent pas dire la même chose. `/api/v0/chat/completions` est le seul des trois à réunir sortie contrainte et statistiques moteur [VÉRIFIÉ, annexe A]. Le SDK 1.5.0 n'expose aucun champ pour désactiver le raisonnement et renvoie celui-ci mélangé à la réponse avec un marqueur interne. Le package `openai` n'apporte rien de plus que `httpx` et masquerait les champs propres à LM Studio. |
 | **ADR-05** | **Raisonnement désactivé** pour tous les runs. L'axe « avec ou sans raisonnement » est abandonné. | Raisonnement activé partout, ou sur échantillon | Avec le raisonnement activé, le modèle génère 60 à 200 tokens de réflexion avant de répondre, soit environ 5 s par question au lieu de 0,9. Sur le jeu complet cela représenterait 7 h par variante, et 58 h pour couvrir deux modèles. Un échantillon aurait rendu cet axe incomparable aux autres, mesurés sur l'ensemble ; il est plus honnête de ne pas le traiter que de le traiter à une autre échelle. |
 | **ADR-06** | Décodage glouton (`temperature=0`, `top_k=1`, `top_p=1`, `min_p=0`, `repeat_penalty=1.0`), instance chargée avec `--parallel 1`, exécution strictement séquentielle, premier appel de chauffe exclu des statistiques. | Sampling recommandé par Google (`temperature=1.0`, `top_p=0.95`, `top_k=64`) | Un benchmark veut la réponse la plus probable et des temps par question propres ; le batching concurrent fausse la latence et nuit à la reproductibilité [DOC]. |
 | **ADR-07** | La notation (`grade`, `ai_correct`) est calculée **une seule fois en Python** au moment d'écrire la couche silver. dbt ne fait que de l'agrégation. | Notation en SQL dans dbt | Le fuzzy matching (rapidfuzz) n'a pas d'équivalent SQL identique ; une seule implémentation testée évite deux logiques divergentes. |
@@ -101,8 +102,8 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **ADR-11** | Streamlit ≥ 1.63 avec `st.navigation` et des pages-fonctions ; accès DuckDB par **connexions courtes** en lecture seule dans des fonctions `st.cache_data` ; thème clair + sombre dans `.streamlit/config.toml` ; Plotly 6.9 (`<7`) avec `theme="streamlit"`. | Connexion en `st.cache_resource` ; Altair | Une connexion DuckDB gardée ouverte par Streamlit **bloque `dbt build`** (verrou tenu tant que la connexion vit) [DOC, testé]. Plotly 7.0 (25 août 2026) n'apporte rien au projet et casse quelques API. |
 | **ADR-12** | Les données sont **versionnées dans git** (bronze, silver, gold) pour un livrable auto-porteur, avec un budget de 60 Mo ; au-delà, Git LFS. Les prompts rendus ne sont pas stockés ligne à ligne (seulement leur hash), ils sont régénérables. | Données hors git | Les correcteurs doivent pouvoir lancer le dashboard sans relancer 4 h de benchmark. |
 | **ADR-13** | Logs avec loguru ; tests avec pytest + pytest-httpx ; lint et format avec ruff ; typage mypy strict sur `src/` ; hooks pre-commit ; CI GitHub Actions (lint, tests, `dbt build` sur fixtures). | stdlib logging, black + flake8 | Moins de configuration, un seul outil de lint [DOC]. |
-| **ADR-14** | Trois variantes de prompt (V1 lettre seule, V2 few-shot, V3 JSON contraint), chacune déclinée pour les questions booléennes. Toutes affichent les options, attendent une réponse courte, et seule change la manière d'obtenir le format. | Une variante en texte libre sans options affichées ; une variante « contrat de sortie » (convention OpenAI simple-evals) | Chaque variante retenue isole un mécanisme : instruction nue, démonstration par l'exemple, contrainte grammaticale. Deux ont été écartées après mesure. La variante en texte libre exigeait de juger du texte libre, avec une erreur de notation irréductible. La variante « contrat de sortie » demandait la réponse en dernière ligne (`Answer: $LETTER`) : le modèle délibère alors en prose sur 33 tokens de médiane malgré la consigne inverse du prompt système, et 10,5 % des réponses étaient coupées par le budget de tokens avant d'atteindre la lettre — son score aurait reflété notre budget plutôt que sa formulation. |
-| **ADR-15** | Comparaison multi-modèles prévue par construction (`model_key` dans chaque run, page « Modèles » du dashboard). Un second modèle, `qwen/qwen3.5-9b`, est évalué sur les trois mêmes variantes et le **jeu complet**, pas sur un échantillon. | Échantillon stratifié pour le second modèle | Consigne « comparaison de modèles ». Les 16 Go ne permettent qu'un modèle chargé à la fois, d'où deux campagnes successives plutôt que simultanées. Le jeu complet plutôt qu'un échantillon : une comparaison appariée question par question exige que les deux modèles voient les mêmes questions. |
+| **ADR-14** | Trois variantes de prompt (V1 lettre seule, V2 few-shot, V3 JSON contraint), chacune déclinée pour les questions booléennes. Toutes affichent les options, attendent une réponse courte, et seule change la manière d'obtenir le format. | Une variante en texte libre sans options affichées ; une variante « contrat de sortie » (convention OpenAI simple-evals) | Chaque variante retenue isole un mécanisme : instruction nue, démonstration par l'exemple, contrainte grammaticale. Deux ont été écartées après mesure. La variante en texte libre exigeait de juger du texte libre, avec une erreur de notation irréductible. La variante « contrat de sortie » impose la réponse en dernière ligne (`Answer: $LETTER`) : le modèle y délibère en prose sur 33 tokens de médiane malgré la consigne inverse du prompt système, et 10,5 % des réponses sont coupées par le budget de tokens avant d'atteindre la lettre. Son score mesurerait le budget accordé plutôt que la formulation. |
+| **ADR-15** | Comparaison multi-modèles prévue par construction (`model_key` dans chaque run, page « Modèles » du dashboard). Le second modèle est `qwen/qwen3.5-9b` **en build GGUF**, chargé comme le premier avec un contexte de 4 096 tokens et un seul emplacement de prédiction, et évalué sur les trois mêmes variantes et le **jeu complet**. | Build MLX du même modèle ; échantillon stratifié pour le second modèle | Consigne « comparaison de modèles ». Le build GGUF et non MLX : les deux formats s'exécutent sur des moteurs d'inférence différents (`llama.cpp` contre `mlx-llm`), et comparer les latences de deux modèles servis par deux moteurs mesurerait le moteur autant que le modèle. Le build MLX de cette famille ignore par ailleurs la longueur de contexte demandée, son ajustement automatique la réécrivant vers ce que la mémoire permet [VÉRIFIÉ : 32 768 obtenus pour 4 096 demandés], ce qui interdit d'aligner les deux modèles. Les 16 Go ne permettent qu'un modèle chargé à la fois, d'où deux campagnes successives. Le jeu complet plutôt qu'un échantillon : une comparaison appariée question par question exige que les deux modèles voient les mêmes questions. |
 
 ---
 
@@ -419,7 +420,7 @@ Contraintes de validation (pydantic + tests) : `correct_answer ∉ incorrect_ans
 | `prompt_variant` | `Enum` | `v1_letter`, `v2_fewshot`, `v3_json` |
 | `prompt_version` | `String` | |
 | `reasoning_mode` | `Enum["off","on"]` | |
-| `transport` | `Enum["native","openai"]` | |
+| `transport` | `Enum` | endpoint ayant servi la réponse |
 | `prompt_sha256` | `String` | |
 | `ai_answer` | `String` | texte brut renvoyé (`content`), peut être vide |
 | `ai_reasoning` | `String` (nullable) | texte de raisonnement si `reasoning_mode = on` |
@@ -429,8 +430,8 @@ Contraintes de validation (pydantic + tests) : `correct_answer ∉ incorrect_ans
 | `grade` | `Enum` | `letter`, `exact`, `fuzzy`, `contains`, `wrong`, `unparseable`, `error` (section 9) |
 | `grade_score` | `Float32` (nullable) | score rapidfuzz quand `grade = fuzzy` |
 | `response_time` | `Float64` | secondes (wall-clock client) |
-| `ttft_s` | `Float64` (nullable) | `time_to_first_token_seconds` (transport natif uniquement) |
-| `tokens_per_second` | `Float64` (nullable) | stat moteur (transport natif uniquement) |
+| `ttft_s` | `Float64` | `stats.time_to_first_token` : traitement du prompt avant le premier token |
+| `tokens_per_second` | `Float64` | `stats.tokens_per_second` : débit de génération mesuré par le moteur |
 | `prompt_tokens` | `Int32` | |
 | `completion_tokens` | `Int32` | tokens générés (réponse + raisonnement) |
 | `reasoning_tokens` | `Int32` | doit valoir 0 si `reasoning_mode = off` (test dbt) |
@@ -575,38 +576,26 @@ Objectif : interroger le modèle pour chaque question avec une variante de promp
 Une classe `LMStudioClient(base_url, model_key, timeout)` avec :
 
 - `health() -> ServerInfo` : `GET /api/v1/models` → vérifie que `model_key` est présent et chargé (`loaded_instances` non vide), renvoie `context_length`, `parallel`, `capabilities.reasoning` [VÉRIFIÉ : le champ existe et l'instance chargée expose `contextLength: 4096`, `parallel: 4` par défaut].
-- `complete(req: LLMRequest) -> LLMResponse` : route vers l'un des deux transports selon `req.json_schema`.
+- `complete(req: LLMRequest) -> LLMResponse` : envoie la requête et normalise la réponse.
 
-**Transport natif** (`POST /api/v1/chat`) — utilisé pour V1 à V4 [VÉRIFIÉ] :
-
-```json
-{
-  "model": "google/gemma-4-12b-qat",
-  "system_prompt": "...",            // omis si la variante n'a pas de system prompt
-  "input": "...",
-  "reasoning": "off",                // ou "on" pour l'expérience optionnelle
-  "temperature": 0, "top_k": 1, "top_p": 1.0, "min_p": 0.0, "repeat_penalty": 1.0,
-  "max_output_tokens": 64,
-  "store": false
-}
-```
-
-Réponse exploitée : `output[]` (éléments `type: "message"` → `content` ; `type: "reasoning"` → `ai_reasoning`), `stats.input_tokens`, `stats.total_output_tokens`, `stats.reasoning_output_tokens`, `stats.tokens_per_second`, `stats.time_to_first_token_seconds`, `model_instance_id`. Les paramètres `top_k`, `min_p` et `repeat_penalty` sont acceptés (HTTP 200) ; l'endpoint renvoie HTTP 400 `unrecognized_keys` pour toute clé inconnue, ce qui protège contre les fautes de frappe [VÉRIFIÉ, annexe A].
-
-**Transport OpenAI-compatible** (`POST /v1/chat/completions`) — utilisé pour V4 [VÉRIFIÉ] :
+**Requête** (`POST /api/v0/chat/completions`) [VÉRIFIÉ] :
 
 ```json
 {
   "model": "google/gemma-4-12b-qat",
   "messages": [{"role":"system","content":"..."},{"role":"user","content":"..."}],
   "reasoning_effort": "none",
-  "temperature": 0, "top_p": 1.0, "top_k": 1, "min_p": 0.0, "repeat_penalty": 1.0,
+  "temperature": 0, "top_k": 1, "top_p": 1.0, "min_p": 0.0, "repeat_penalty": 1.0,
   "max_tokens": 24,
   "response_format": {"type":"json_schema","json_schema":{"name":"trivia_answer","strict":true,"schema":{...}}}
 }
 ```
 
-Réponse exploitée : `choices[0].message.content`, `choices[0].message.reasoning_content` (doit être vide), `choices[0].finish_reason`, `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens`. Pas de TTFT ni de tokens/s sur ce transport (`stats` vide) → colonnes nulles. Le champ `reasoning: "off"` est **ignoré** par cet endpoint (raisonnement resté actif lors du test) : seul `reasoning_effort: "none"` fonctionne [VÉRIFIÉ]. Les extensions `top_k`, `min_p`, `repeat_penalty` sont acceptées, mais cet endpoint **ignore silencieusement toute clé inconnue** (HTTP 200 avec une clé fantaisiste) : les noms de paramètres y sont donc couverts par un test unitaire et par `trivia check` [VÉRIFIÉ].
+Le tour `system` est omis quand la variante n'en déclare pas ; `response_format` n'est présent que pour la variante à sortie contrainte. Tout le reste est identique d'une variante à l'autre.
+
+**Réponse exploitée** : `choices[0].message.content`, `choices[0].message.reasoning_content` (doit être vide), `choices[0].finish_reason`, `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens`, `stats.time_to_first_token`, `stats.tokens_per_second`. Le bloc `model_info` (`arch`, `quant`, `format`, `context_length`) et le bloc `runtime` (`name`, `version`) décrivent l'instance ayant réellement servi l'appel : ils sont recopiés dans le manifeste lors de l'appel de chauffe, ce qui rend la configuration du run traçable sans dépendre de la CLI.
+
+Cet endpoint **ignore silencieusement les clés inconnues** (HTTP 200 avec un paramètre fantaisiste) [VÉRIFIÉ]. Les noms des paramètres de décodage ne sont donc garantis par aucune validation serveur : ils sont couverts par un test unitaire sur le corps de requête et par `trivia check`, qui vérifie en outre le déterminisme sur trois appels identiques.
 
 **Garde-fou raisonnement** : si `reasoning_mode = off` et que la réponse contient des tokens de raisonnement (`reasoning_output_tokens > 0` ou `reasoning_tokens > 0`), le run s'arrête avec une erreur explicite (invariant du benchmark).
 
@@ -675,7 +664,7 @@ Collecté au démarrage : `run_id`, `model_key`, `model_display_name`, `model_qu
 
 ### 8.7 Tests
 
-`pytest-httpx` : les deux transports (corps de requête exact, parsing des stats, absence/présence de raisonnement, HTTP 400 → échec immédiat, 5xx → retries, timeout) ; garde-fou raisonnement ; rendu des 3 variantes × 2 types (snapshots texte) ; reprise (`--resume` ignore les IDs déjà présents) ; manifeste (champs obligatoires, sérialisation) ; conversion JSONL → Parquet.
+`pytest-httpx` : le corps de requête exact (noms des paramètres de décodage, `reasoning_effort`, schéma JSON), le parsing des statistiques, l'identité du chemin appelé pour toutes les variantes, la présence des statistiques y compris sur sortie contrainte, HTTP 400 → échec immédiat, 5xx → retries, timeout ; garde-fou raisonnement ; rendu des 3 variantes × 2 types (snapshots texte) ; reprise (`--resume` ignore les IDs déjà présents) ; manifeste (champs obligatoires, sérialisation) ; conversion JSONL → Parquet.
 
 ---
 
@@ -746,7 +735,7 @@ Refus : deux listes distinctes, car les confondre produit des faux positifs. Une
 
 ### 9.5 Réponses tronquées
 
-Le budget de tokens de chaque variante peut couper une réponse. Une réponse coupée est une preuve incomplète : la suite manquante peut contredire ce qui a été reçu. Le rapprochement par **sous-chaîne** est donc désactivé sur une réponse tronquée — c'est la seule règle dont le verdict puisse être renversé par la suite du texte, comme l'a montré « The character Daryl Dixon does not have a », qui créditait Dixon alors que la négation tombait hors du texte reçu.
+Le budget de tokens de chaque variante peut couper une réponse. Une réponse coupée est une preuve incomplète : la suite manquante peut contredire ce qui a été reçu. Le rapprochement par **sous-chaîne** est donc désactivé sur une réponse tronquée : c'est la seule règle dont le verdict puisse être renversé par la suite du texte. « The character Daryl Dixon does not have a » en est l'exemple type — l'option y est citée juste avant d'être niée, et la négation tombe hors du texte reçu.
 
 Les autres règles restent actives : une lettre ancrée en tête, une égalité exacte ou un rapprochement approché ne peuvent pas être inversés par la suite du texte. La troncature est calculée là où elle sert, au moment de la notation (`completion_tokens >= max_tokens`), et transmise à la couche gold dans `is_truncated` plutôt que recalculée en SQL.
 
@@ -934,7 +923,7 @@ Les autres marts suivent le même patron avec leur grain (section 5.3). `mart_va
 - Tableau détaillé filtrable (catégorie, difficulté, type) avec `n`, précision, IC, au-dessus du hasard.
 
 **4. Temps de réponse** (`latency.py`, icône `timer`)
-- KPI : médiane, p90, p95, tokens/s médian, TTFT médian (transport natif).
+- KPI : médiane, p90, p95, tokens/s médian, TTFT médian.
 - Violons + boîtes du temps de réponse par variante (échelle log optionnelle), séparés QCM / booléen.
 - ECDF des temps par variante.
 - Nuage `prompt_tokens` × `response_time` (coût du prefill), coloré par variante, avec droite de tendance.
@@ -1050,7 +1039,7 @@ Développés et testés sur fixtures (TDD) : `ids`, `normalize`, `shuffle`, `gra
 
 1. `make check` puis `uv run trivia bench --variant v1_letter` (le plus rapide, ≈ 25 min) ; contrôle qualité sur le Parquet : taux non parsable, distribution des grades, temps médian.
 2. Enchaîner `v2_fewshot` puis `v3_json` (`make bench-all`).
-4. Optionnel (ADR-15) : second modèle (question Q2), mêmes variantes sur l'échantillon stratifié.
+4. Second modèle (ADR-15) : `make unload-model`, puis `make load-model MODEL=qwen/qwen3.5-9b`, `make check MODEL=qwen/qwen3.5-9b`, puis les trois mêmes variantes sur le jeu complet (`scripts/bench_all.sh --model qwen/qwen3.5-9b`). Vérifier avant de lancer que `trivia check` annonce bien un moteur `llama.cpp` et un contexte de 4 096 : un build MLX serait servi par un autre moteur et refuserait cette longueur de contexte.
 5. `uv run trivia grade --all` ; commit des JSONL bruts, manifestes et partitions silver.
 
 ### Phase 5 — Couche gold (dbt)
@@ -1082,7 +1071,7 @@ README complet (section 13), relecture croisée dans le groupe, `make lint test 
 | Mémoire (16 Go) | échec de chargement, swap | contexte 4 096, un seul modèle, fermer les applications lourdes, `lms load --estimate-only` avant chaque session |
 | Runs longs interrompus | perte de temps | JSONL flushé ligne à ligne, `--resume`, manifeste `partial` |
 | Régression de LM Studio (mise à jour automatique) | champs d'API modifiés | versions consignées dans le manifeste ; `trivia check` détecte les écarts ; ne pas mettre à jour LM Studio pendant la campagne de runs |
-| Endpoint natif rejetant un paramètre glouton | erreur 400 immédiate | `trivia check` en Phase 0 ; repli : retirer le paramètre non supporté et le documenter |
+| Paramètre de décodage mal nommé | l'endpoint ignore les clés inconnues sans rien signaler : le décodage ne serait plus glouton, sans erreur visible | test unitaire sur le corps de requête exact, et contrôle de déterminisme sur trois appels identiques dans `trivia check` |
 | Verrou DuckDB entre dbt et Streamlit | build ou dashboard en erreur | connexions courtes, build vers fichier temporaire puis remplacement atomique |
 | Poids du dépôt | clone lent | budget 60 Mo, prompts non stockés ligne à ligne, Git LFS en repli |
 
@@ -1129,6 +1118,9 @@ Machine cible, LM Studio 0.4.24, modèle `google/gemma-4-12b-qat` chargé avec `
 | `POST /v1/chat/completions` | `reasoning_effort: "none"` | `B` | 2 (0) | 0,21 s |
 | `POST /v1/chat/completions` | `reasoning: "off"` | raisonnement **toujours actif** (paramètre ignoré) | 48 (45) | 2,7 s |
 | `POST /v1/chat/completions` | `reasoning_effort: "none"` + `response_format` json_schema | `{"answer": "B"}` | 14 (0) | 0,88 s |
+| `POST /api/v0/chat/completions` | `reasoning_effort: "none"` | `C`, bloc `stats` renseigné | 2 (0) | TTFT 0,138 s, 21,4 tok/s |
+| `POST /api/v0/chat/completions` | `reasoning_effort: "none"` + `response_format` json_schema | `{"answer": "C"}`, bloc `stats` renseigné | 7 (0) | TTFT 0,166 s, 22,0 tok/s |
+| `POST /api/v0/chat/completions` | + clé inconnue `definitely_unknown_key` | HTTP 200 (clé ignorée silencieusement) | — | — |
 | SDK `lmstudio` 1.5.0, `model.respond(chat, config={"temperature": 0, "maxTokens": 64})` | défaut | `content` = texte de raisonnement suivi du marqueur `__LM_STUDIO_INTERNAL_LSEP_SYNTHETIC_REASONING_END_…__`, `stopReason: maxPredictedTokensReached` | 64 | 2,9 s |
 
 Question booléenne « Adolf Hitler was born in Australia. » en natif `reasoning: off` → `False`, 2 tokens, 0,50 s.
@@ -1176,13 +1168,19 @@ Schéma JSON (V4, booléen) : idem avec `"enum":["True","False"]`.
 
 ### Annexe C — Paramètres de génération de référence
 
-| Paramètre | Natif `/api/v1/chat` | OpenAI `/v1/chat/completions` |
-|---|---|---|
-| Raisonnement désactivé | `"reasoning": "off"` | `"reasoning_effort": "none"` |
-| Décodage glouton | `temperature: 0, top_k: 1, top_p: 1.0, min_p: 0.0, repeat_penalty: 1.0` [VÉRIFIÉ] | mêmes paramètres. `seed` n'est pas envoyé : avec `temperature: 0` et `top_k: 1` le décodage est déterministe par construction, une graine n'y ajouterait rien et laisserait croire que l'échantillonnage joue un rôle [VÉRIFIÉ, clés inconnues ignorées silencieusement] |
-| Longueur max | `max_output_tokens` | `max_tokens` |
-| Sortie structurée | non supportée | `response_format: {type: json_schema, json_schema: {name, strict: true, schema}}` |
-| Stats | `input_tokens`, `total_output_tokens`, `reasoning_output_tokens`, `tokens_per_second`, `time_to_first_token_seconds` | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens` |
+Endpoint unique : `POST /api/v0/chat/completions`.
+
+| Paramètre | Valeur |
+|---|---|
+| Raisonnement désactivé | `"reasoning_effort": "none"` |
+| Décodage glouton | `temperature: 0, top_k: 1, top_p: 1.0, min_p: 0.0, repeat_penalty: 1.0` [VÉRIFIÉ]. `seed` n'est pas envoyé : avec `temperature: 0` et `top_k: 1` le décodage est déterministe par construction, une graine n'y ajouterait rien et laisserait croire que l'échantillonnage joue un rôle |
+| Longueur max | `max_tokens` |
+| Sortie structurée | `response_format: {type: json_schema, json_schema: {name, strict: true, schema}}` |
+| Statistiques | `stats.time_to_first_token`, `stats.tokens_per_second`, `stats.generation_time`, `stats.stop_reason` |
+| Usage | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens` |
+| Provenance | `model_info.{arch, quant, format, context_length}`, `runtime.{name, version}` |
+
+Les clés inconnues sont ignorées silencieusement (HTTP 200) : les noms ci-dessus sont garantis par les tests, pas par le serveur.
 
 ### Annexe D — Index des rapports de recherche (`docs/research/`)
 

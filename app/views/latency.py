@@ -62,16 +62,15 @@ def render(selection: queries.Selection | None) -> None:
             {
                 "label": "Debit median",
                 "value": f"{float(summary['median_tokens_per_second'].median() or 0):.1f} tok/s",
-                "help": "Mesure fournie par le moteur d'inference, transport natif uniquement.",
+                "help": "Debit de generation mesure par le moteur d'inference.",
                 "icon": ":material/bolt:",
             },
             {
                 "label": "Temps au premier token",
                 "value": components.seconds(float(summary["median_ttft_s"].median() or 0), 3),
                 "help": "Duree de traitement du prompt avant le premier token genere. "
-                "Elle croit avec la longueur du prompt. Transport natif uniquement : la "
-                "variante a sortie contrainte passe par l'endpoint compatible OpenAI, qui "
-                "ne publie pas cette statistique.",
+                "Elle croit avec la longueur du prompt : c'est la ou se paient les exemples "
+                "d'une variante few-shot.",
                 "icon": ":material/hourglass_top:",
             },
         ],
@@ -155,11 +154,10 @@ def render(selection: queries.Selection | None) -> None:
             components.chart(figure, key="latency_drift")
             theme.note(
                 "Un debit qui baisse regulierement au fil des milliers d'appels signale un "
-                "ralentissement thermique de la machine, pas une propriete du modele. "
-                "Seules les variantes passees par le transport natif figurent ici : "
-                "l'endpoint compatible OpenAI, impose par la sortie contrainte, ne renvoie "
-                "ni debit ni temps au premier token. Le temps de reponse, lui, est mesure "
-                "au chronometre cote client et reste comparable entre toutes les variantes."
+                "ralentissement thermique de la machine, pas une propriete du modele. Le "
+                "debit est mesure par le moteur : il est insensible a ce qui se passe cote "
+                "client, la ou le temps de reponse total, lui, absorbe le moindre appel "
+                "concurrent."
             )
 
     st.space("medium")

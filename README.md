@@ -15,9 +15,13 @@ architecture médaillon et un rapport interactif.
 
 ## Ce que mesure ce benchmark
 
-La même question de culture générale est posée au modèle de **trois façons différentes**. On
-mesure ce que chaque formulation change : le taux de bonnes réponses, la capacité du modèle à
-respecter un format de sortie, et le temps de réponse.
+La même question de culture générale est posée de **trois façons différentes** à **deux modèles
+exécutés localement**. On mesure ce que chaque formulation change — taux de bonnes réponses,
+respect du format de sortie, temps de réponse — et ce qui distingue les deux modèles à
+formulation égale.
+
+Les deux modèles sont chargés dans la même configuration, servis par le même moteur d'inférence
+et interrogés par le même endpoint : les écarts observés viennent des modèles, pas du montage.
 
 <!-- RESULTATS -->
 
@@ -121,13 +125,11 @@ du prompt effectivement envoyé est enregistrée avec chaque réponse.
 Chaque variante existe en version choix multiples et en version vrai/faux. Les trois attendent une
 **réponse courte** : une lettre en choix multiples, le mot lui-même en vrai/faux.
 
-Une quatrième variante a été essayée puis écartée, et la raison mérite d'être connue. Elle suivait
-la convention du harnais OpenAI *simple-evals* : un prompt système demandant de ne jamais expliquer,
-et un contrat imposant `Answer: $LETTER` en dernière ligne. Le modèle a désobéi au prompt système et
-délibéré en prose — 33 tokens de médiane — avant de donner sa lettre. Avec un budget de 64 tokens,
-**10,5 % des réponses étaient coupées avant d'atteindre la lettre**, l'une d'elles s'arrêtant
-littéralement sur le mot « Answer ». Son score aurait mesuré notre budget de tokens plutôt que sa
-formulation, et l'aurait rendue incomparable aux trois autres.
+Une quatrième formulation, écartée, mérite d'être mentionnée : celle du harnais OpenAI
+*simple-evals*, qui impose `Answer: $LETTER` en dernière ligne. Le modèle y délibère en prose sur
+33 tokens de médiane malgré un prompt système lui demandant de ne jamais expliquer, et **10,5 % des
+réponses sont coupées par le budget de tokens avant d'atteindre la lettre**. Son score mesurerait
+le budget accordé plutôt que la formulation, ce qui la rendrait incomparable aux trois autres.
 
 ### 4. Conditions d'exécution
 
@@ -143,22 +145,32 @@ formulation, et l'aurait rendue incomparable aux trois autres.
 
 ### 5. Pourquoi l'API REST de LM Studio et non le SDK Python
 
-La consigne suggère d'utiliser l'API Python de LM Studio. Un test de fumée mené le 2026-09-10 sur
-LM Studio 0.4.24 a montré que **le SDK Python `lmstudio` (1.5.0, dernière version publiée) ne
-permet pas de désactiver le mode « thinking » de Gemma 4**, actif par défaut. Sur une question
-triviale, le modèle consomme alors tout son budget de tokens en raisonnement et **ne répond
-pas** ; le SDK renvoie de surcroît le raisonnement mélangé au texte de réponse, suivi d'un
-marqueur interne.
-
-| Transport | Raisonnement désactivable | Sortie structurée | Statistiques moteur |
-|---|---|---|---|
-| SDK Python `lmstudio` | Non | Oui | Oui |
-| REST natif `/api/v1/chat` | **Oui** (`reasoning: "off"`) | Non (HTTP 400) | **Oui** (TTFT, tokens/s) |
-| REST compatible OpenAI `/v1/chat/completions` | **Oui** (`reasoning_effort: "none"`) | **Oui** (`json_schema`) | Non |
+La consigne suggère d'utiliser l'API Python de LM Studio. Le SDK `lmstudio` (1.5.0, dernière
+version publiée) **ne permet pas de désactiver le mode « thinking »**, actif par défaut sur les
+deux modèles évalués. Sur une question triviale, le modèle consomme alors tout son budget de
+tokens en raisonnement et **ne répond pas** ; le SDK renvoie de surcroît le raisonnement mélangé
+au texte de réponse, suivi d'un marqueur interne.
 
 Le projet utilise donc l'**API REST officielle de LM Studio**, pilotée depuis Python avec
-`httpx` : l'endpoint natif pour les variantes textuelles, l'endpoint compatible OpenAI pour la
-variante à sortie structurée. Le détail des mesures figure dans [`SPEC.md`](SPEC.md), annexe A.
+`httpx`. Elle expose trois endpoints de complétion, et un seul réunit tout ce que le benchmark
+exige d'un même appel :
+
+| Endpoint | Raisonnement désactivable | Sortie contrainte | Statistiques moteur |
+|---|---|---|---|
+| SDK Python `lmstudio` | Non | Oui | Oui |
+| `/api/v1/chat` | Oui (`reasoning: "off"`) | Non (HTTP 400) | Oui |
+| `/v1/chat/completions` | Oui (`reasoning_effort: "none"`) | Oui (`json_schema`) | Non |
+| **`/api/v0/chat/completions`** | **Oui** (`reasoning_effort: "none"`) | **Oui** (`json_schema`) | **Oui** (TTFT, tokens/s) |
+
+**Toutes les variantes passent par le même endpoint**, et c'est une condition de validité, pas
+une commodité. Mesurer la variante à sortie contrainte par un chemin et les autres par un second
+produirait des colonnes qui ne veulent pas dire la même chose : l'écart observé entre variantes
+mélangerait alors l'effet du prompt et celui du transport.
+
+En prime, chaque réponse porte les blocs `model_info` et `runtime` : architecture, quantification,
+format, longueur de contexte, moteur d'inférence et sa version. La configuration exacte ayant
+servi à chaque run est donc lisible dans les données brutes, sans dépendre de ce qu'affiche la
+ligne de commande.
 
 ### 6. Notation des réponses
 
@@ -188,8 +200,8 @@ accorde quatre fois plus. Sur la première variante, 98,7 % des réponses font d
 seules 1,0 % atteignent la limite — dont 51 sur 54 commencent par un refus explicite de choisir
 (« None of the options provided are correct »). La troncature ne concerne donc que des réponses
 déjà hors format, et la colonne `is_truncated` de la couche gold permet de le vérifier à tout
-moment. L'endpoint natif de LM Studio ne renvoyant pas de `finish_reason`, c'est la comparaison
-entre tokens générés et budget demandé qui fait foi.
+moment. La troncature se déduit de la comparaison entre tokens générés et budget demandé, plus
+fiable qu'un `finish_reason` dont la valeur dépend du moteur.
 
 La normalisation décode les entités HTML, retire les accents, la ponctuation (donc aussi la mise
 en forme Markdown que le modèle produit spontanément) et les articles. Une garde anti-négation
@@ -247,13 +259,19 @@ LMSTUDIO_MODEL_KEY=google/gemma-4-12b-qat
 ### Téléchargement et chargement du modèle
 
 ```bash
-export PATH="$HOME/.lmstudio/bin:$PATH"      # à ajouter dans ~/.zshrc
-lms get google/gemma-4-12b-qat               # ~7 Go
-make load-model                              # démarre le serveur et charge le modèle
+export PATH="$HOME/.lmstudio/bin:$PATH"        # à ajouter dans ~/.zshrc
+lms get google/gemma-4-12b-qat                 # ~7 Go
+lms get qwen/qwen3.5-9b --gguf                 # ~6,5 Go, second modèle
+make load-model                                # démarre le serveur et charge le modèle
 ```
 
+Le `--gguf` n'est pas un détail : LM Studio sert les modèles GGUF par `llama.cpp` et les modèles
+MLX par `mlx-llm`. Deux moteurs différents rendraient les latences des deux modèles
+incomparables, et le build MLX de cette famille ignore la longueur de contexte demandée.
+
 `make load-model` charge le modèle avec un contexte de 4 096 tokens et **un seul emplacement de
-prédiction**, condition d'une mesure de latence propre. Vérifier ensuite :
+prédiction**, condition d'une mesure de latence propre. La cible accepte un autre modèle :
+`make load-model MODEL=qwen/qwen3.5-9b`. Vérifier ensuite :
 
 ```bash
 make check

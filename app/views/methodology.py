@@ -80,9 +80,9 @@ deux echecs de nature differente :
 C'est la seule mesure de temps disponible pour toutes les variantes, donc la seule sur
 laquelle les comparer.
 
-**`ttft_s`** et **`tokens_per_second`** viennent du moteur d'inference et ne sont donc
-publiees que par le transport natif (voir l'onglet Protocole). Elles sont vides pour la
-variante a sortie contrainte.
+**`ttft_s`** est le temps de traitement du prompt avant le premier token genere ; il croit
+avec la longueur du prompt. **`tokens_per_second`** est le debit de generation. Les deux
+viennent du moteur d'inference et sont renseignes pour toutes les variantes.
 
 ### Statistiques
 
@@ -129,13 +129,13 @@ traite a une autre echelle : mesure sur le jeu complet il aurait demande une soi
 d'heures, et mesure sur un echantillon il n'aurait plus ete comparable au reste. Un run avec
 raisonnement reste possible, la colonne existe, mais aucun n'est publie ici.
 
-**Deux transports, une mesure en moins.** L'endpoint natif de LM Studio refuse la sortie
-structuree, et l'endpoint compatible OpenAI, qui l'accepte, ne renvoie aucune statistique
-moteur. La variante a sortie contrainte passe donc par le second et n'a ni temps au premier
-token ni debit ; les deux autres passent par le premier et les ont. Le choix etait entre le
-format garanti et les statistiques fines, pas entre les deux. Le temps de reponse, mesure
-cote client, reste lui comparable entre toutes les variantes, et la colonne `transport` de la
-couche gold indique pour chaque reponse par ou elle est passee.
+**Un seul endpoint pour toutes les variantes.** LM Studio expose trois endpoints de
+completion. `/api/v1/chat` refuse la sortie contrainte, `/v1/chat/completions` l'accepte mais
+ne publie aucune statistique moteur, `/api/v0/chat/completions` fait les deux. Le benchmark
+n'utilise que ce dernier : interroger une variante par un chemin et les autres par un second
+produirait des colonnes qui ne mesurent pas la meme chose, et l'ecart observe entre variantes
+melangerait l'effet du prompt et celui du transport. Chaque reponse porte en outre le moteur
+d'inference, sa version, le format du modele et la longueur de contexte effective.
 
 **Ordre des options fige.** Les options sont melangees une fois pour toutes, avec une graine
 derivee de l'identifiant de la question. Toutes les variantes et tous les modeles voient donc

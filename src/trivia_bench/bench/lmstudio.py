@@ -10,7 +10,7 @@ trois besoins du benchmark dans un meme appel :
 - le bloc `stats` renvoie le temps jusqu'au premier token, le debit et le temps de generation
   seul, pour **toutes** les variantes.
 
-Les deux autres endpoints imposaient un compromis : `/api/v1/chat` refuse `response_format`
+Les deux autres endpoints imposent un compromis : `/api/v1/chat` refuse `response_format`
 (HTTP 400), et `/v1/chat/completions` l'accepte mais ne renvoie aucune statistique moteur.
 Mesurer une variante par un chemin et les autres par un second aurait produit des colonnes
 qui ne veulent pas dire la meme chose ; un seul transport les rend comparables.

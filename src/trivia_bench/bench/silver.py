@@ -154,9 +154,9 @@ def grade_run(
             n_missing += 1
             continue
 
-        # L'endpoint natif ne renvoie pas de `finish_reason` : la troncature se deduit du
-        # budget de tokens atteint. Elle est calculee ici parce qu'elle pese sur la notation,
-        # et transmise telle quelle a la couche gold plutot que recalculee en SQL.
+        # La troncature se deduit du budget de tokens atteint, plus fiable qu'un
+        # `finish_reason` dont la valeur depend du moteur. Elle est calculee ici parce qu'elle
+        # pese sur la notation, et transmise telle quelle a la couche gold.
         max_tokens = int(record.get("max_tokens") or 0)
         completion_tokens = int(record.get("completion_tokens") or 0)
         is_truncated = max_tokens > 0 and completion_tokens >= max_tokens
