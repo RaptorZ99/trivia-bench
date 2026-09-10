@@ -49,6 +49,11 @@ dev = [
 line-length = 100
 target-version = "py312"
 src = ["src", "tests", "app"]
+# Ruff reformate aussi les blocs de code Python contenus dans les fichiers Markdown.
+# La specification et les rapports de documentation citent du code tiers verbatim
+# (gabarit OpenAI simple-evals, script d'evaluation SQuAD, extraits de documentation) :
+# les reformater denaturerait la citation.
+extend-exclude = ["SPEC.md", "docs/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF", "PTH"]
