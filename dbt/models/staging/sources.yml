@@ -1,0 +1,53 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >
+      Couche silver : questions nettoyees et reponses notees, au format Parquet.
+      Les chemins sont relatifs a la racine du depot (dbt est lance depuis la racine).
+    meta:
+      external_location: "read_parquet('{{ env_var('TRIVIA_SILVER_DIR', 'data/silver') }}/{name}.parquet')"
+    tables:
+      - name: questions
+        description: Une ligne par question unique, avec l'ordre des options fige.
+        columns:
+          - name: question_id
+            description: Empreinte sha256 du contenu normalise de la question.
+            data_tests:
+              - unique
+              - not_null
+          - name: type
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["multiple", "boolean"]
+          - name: difficulty
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["easy", "medium", "hard"]
+
+      - name: runs
+        description: Un manifeste par run de benchmark (modele, variante, versions, machine).
+        columns:
+          - name: run_id
+            data_tests:
+              - unique
+              - not_null
+
+      - name: answers
+        description: >
+          Une ligne par (run, question). Les fichiers sont partitionnes par run selon la
+          convention Hive ; la colonne `run_id` est aussi presente dans les fichiers, on lit
+          donc simplement l'ensemble des partitions.
+        config:
+          external_location: "read_parquet('{{ env_var('TRIVIA_SILVER_DIR', 'data/silver') }}/answers/**/*.parquet', union_by_name = true)"
+        columns:
+          - name: question_id
+            data_tests:
+              - not_null
+          - name: grade
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["letter", "exact", "fuzzy", "contains", "wrong", "unparseable", "error"]

@@ -1,0 +1,177 @@
+"""Methodologie : comment les chiffres du dashboard sont obtenus."""
+
+from __future__ import annotations
+
+import streamlit as st
+
+from lib import theme
+
+PIPELINE = """
+```
+OpenTDB ──scrape──▶  bronze : questions_raw.csv, reponses HTTP brutes
+                        │
+                     clean │  nettoyage, identifiants, ordre des options fige
+                        ▼
+LM Studio ──bench──▶  bronze : une ligne JSON par appel au modele
+                        │
+                     grade │  notation deterministe en Python
+                        ▼
+                     silver : questions.parquet, answers/run_id=*/, runs.parquet
+                        │
+                      dbt   │  vues staging puis tables gold
+                        ▼
+                     gold : benchmark.duckdb  ──▶  ce dashboard
+```
+"""
+
+
+def render() -> None:
+    """Documente le protocole, les definitions et les limites."""
+    theme.page_header(
+        "Methodologie",
+        "Protocole, definitions et limites du benchmark.",
+    )
+
+    pipeline, definitions, protocol, limits = st.tabs(
+        ["Pipeline", "Definitions", "Protocole", "Limites"]
+    )
+
+    with pipeline:
+        st.markdown("### De l'API au dashboard")
+        st.markdown(PIPELINE)
+        st.markdown(
+            """
+Le projet suit une architecture en medaillon. Chaque couche a une responsabilite unique :
+
+- **Bronze** conserve la donnee telle qu'elle est arrivee, sans interpretation. On peut
+  toujours revenir a la reponse exacte du modele, mot pour mot.
+- **Silver** contient des observations propres et typees : une ligne par question, une ligne
+  par couple (run, question). C'est la que la notation est figee.
+- **Gold** repond a des questions metier precises. Chaque table correspond a une question
+  posee dans le rapport, et se lit sans jointure supplementaire.
+
+La notation est calculee **une seule fois, en Python**, jamais en SQL. Le rapprochement
+approche des reponses n'a pas d'equivalent SQL identique, et une seule implementation evite
+que deux logiques divergent silencieusement.
+            """
+        )
+
+    with definitions:
+        st.markdown("### Ce que mesure chaque colonne")
+        st.markdown(
+            """
+**`ai_correct`** vaut vrai lorsque la reponse du modele correspond a la bonne reponse, quelle
+que soit la maniere dont elle a ete formulee.
+
+**`grade`** precise *comment* cette correspondance a ete etablie, ce qui permet de separer
+deux echecs de nature differente :
+
+| Notation | Signification |
+|---|---|
+| Lettre extraite | Le modele a repondu par la lettre attendue. |
+| Texte exact | Il a ecrit le texte de l'option, apres normalisation. |
+| Rapprochement approche | Similarite d'au moins 90 avec l'option, et un ecart d'au moins 5 points avec la deuxieme meilleure. |
+| Reponse contenue | La bonne reponse figure dans une phrase, sans negation devant. |
+| Fausse | Une reponse a bien ete identifiee, mais elle est incorrecte. |
+| Inexploitable | Aucune reponse identifiable : echec de format, pas de connaissance. |
+| Erreur d'appel | L'appel au modele a echoue apres plusieurs tentatives. |
+
+**`response_time`** est mesure cote client autour de l'appel HTTP complet. Le temps jusqu'au
+premier token et le debit proviennent du moteur d'inference lui-meme.
+
+### Statistiques
+
+**Intervalle de Wilson** plutot que l'approximation normale : il reste valide quand
+l'effectif est faible ou la proportion proche de 0 ou 1, ce qui arrive dans les petites
+categories. Toutes les proportions du dashboard sont accompagnees de leur intervalle a 95 %.
+
+**Test de McNemar** pour comparer deux variantes : elles repondent aux memes questions, la
+comparaison est donc appariee. Seules les paires discordantes portent de l'information. En
+dessous de 25 paires discordantes, le test binomial exact remplace l'approximation.
+
+**Bootstrap apparie** pour l'intervalle de confiance de l'ecart entre deux variantes : le
+reechantillonnage porte sur les questions, ce qui preserve l'appariement.
+
+**Niveau du hasard** : 25 % aux choix multiples a quatre options, 50 % au vrai/faux. Une
+exactitude brute de 55 % en vrai/faux vaut moins qu'une exactitude de 45 % en choix
+multiples ; le dashboard affiche donc systematiquement l'ecart au hasard.
+
+**Effectif faible** : en dessous de 30 questions, l'intervalle devient trop large pour
+conclure. Ces categories sont signalees plutot que masquees.
+            """
+        )
+
+    with protocol:
+        st.markdown("### Conditions d'execution")
+        st.markdown(
+            """
+**Decodage glouton.** Temperature a 0, `top_k` a 1, `top_p` a 1, `min_p` a 0, penalite de
+repetition a 1. Un benchmark cherche la reponse la plus probable du modele, pas de la
+diversite. Trois appels identiques donnent la meme reponse, ce qui est verifie avant chaque
+campagne.
+
+**Une requete a la fois.** Le modele est charge avec un seul emplacement de prediction. Le
+traitement par lots du serveur ferait se recouvrir plusieurs generations et fausserait le
+temps mesure pour chaque question.
+
+**Appel de chauffe.** Le premier appel de chaque run paie la mise en cache du prompt systeme
+et l'allocation memoire. Il est effectue sur une question hors jeu et exclu des mesures.
+
+**Raisonnement desactive.** Gemma 4 raisonne par defaut. Sur une question factuelle, ce mode
+consomme l'essentiel du budget de tokens en reflexion sans changer la reponse : le benchmark
+principal le desactive, et une experience dediee mesure ce qu'il apporte.
+
+**Ordre des options fige.** Les options sont melangees une fois pour toutes, avec une graine
+derivee de l'identifiant de la question. Toutes les variantes et tous les modeles voient donc
+exactement la meme presentation, et la bonne reponse n'est pas systematiquement en premiere
+position. Le biais de position reste mesurable dans la couche gold.
+
+**Exemples few-shot exclus.** Les quatre questions servant d'exemples dans la variante
+few-shot ne sont jamais evaluees : le modele en a vu la reponse dans son propre contexte.
+
+**Tracabilite.** Chaque run est decrit par un manifeste : cle et quantification du modele,
+longueur de contexte, parametres de generation, version des gabarits de prompt, empreinte du
+jeu de questions, versions logicielles, machine et commit git.
+            """
+        )
+
+    with limits:
+        st.markdown("### Ce que ce benchmark ne dit pas")
+        st.markdown(
+            """
+**Contamination probable du jeu de donnees.** Open Trivia Database est public depuis 2014 et
+largement republie. Une partie des questions a vraisemblablement ete vue pendant
+l'entrainement du modele. Les scores melangent donc connaissance et memorisation.
+
+**Quantification.** Le modele evalue est une version quantifiee sur quatre bits. Une perte de
+rappel factuel par rapport a la version pleine precision est plausible, en particulier sur les
+faits rares.
+
+**Questions datees ou ambigues.** Certaines questions ont plusieurs reponses defendables, ou
+ont vieilli. L'onglet « Questions revelatrices » de l'explorateur sert de detecteur : celles
+que toutes les variantes ratent meritent une relecture.
+
+**Categories desequilibrees.** Le jeu va de quelques dizaines de questions pour certains
+themes a plus d'un millier pour d'autres. Les intervalles de confiance des petites categories
+sont larges, et signales comme tels.
+
+**Machine unique.** Les temps mesures valent pour un MacBook Pro M2 Pro a un instant donne.
+Un ralentissement thermique sur plusieurs heures est possible ; il est mesure et affiche dans
+la page « Temps de reponse ».
+
+**Reproductibilite a la virgule pres.** Meme en decodage glouton, l'arithmetique flottante sur
+GPU ne garantit pas des sorties strictement identiques d'une execution a l'autre. Le protocole
+minimise cet effet sans pouvoir le supprimer.
+
+**Notation automatique.** Le rapprochement approche et la regle de reponse contenue peuvent
+produire de rares faux positifs. Le mode de reconnaissance est conserve pour chaque reponse,
+ce qui permet de les auditer.
+            """
+        )
+
+    st.space("medium")
+    st.divider()
+    st.caption(
+        "Donnees de questions : Open Trivia Database, licence CC BY-SA 4.0 · https://opentdb.com "
+        "· Modele execute localement via LM Studio."
+    )

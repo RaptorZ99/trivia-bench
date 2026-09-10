@@ -1,0 +1,8 @@
+Question: {question}
+
+A) {A}
+B) {B}
+C) {C}
+D) {D}
+
+Answer with the letter only (A, B, C, or D). Do not explain.

@@ -1,0 +1,115 @@
+version: 2
+
+models:
+  - name: dim_question
+    description: Referentiel des questions, avec l'ordre des options fige et la bonne lettre.
+    columns:
+      - name: question_id
+        description: Empreinte sha256 du contenu normalise.
+        data_tests: [unique, not_null]
+      - name: correct_letter
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["A", "B", "C", "D"]
+
+  - name: dim_run
+    description: >
+      Un run = un modele x une variante de prompt x un mode de raisonnement. Contient la
+      configuration complete permettant de rejouer l'experience.
+    columns:
+      - name: run_id
+        data_tests: [unique, not_null]
+      - name: prompt_variant
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [v1_open, v2_letter, v3_simple_evals, v4_fewshot, v5_json]
+      - name: reasoning_mode
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["off", "on"]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [running, partial, complete]
+
+  - name: fct_answer
+    description: >
+      Grain le plus fin : une reponse du modele pour une question, dans un run donne.
+      Table de reference pour l'explorateur de questions et les analyses appariees.
+    columns:
+      - name: question_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_question')
+                field: question_id
+      - name: run_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_run')
+                field: run_id
+      - name: ai_correct
+        description: Vrai si la reponse du modele correspond a la bonne reponse.
+        data_tests: [not_null]
+      - name: grade
+        description: >
+          Comment la reponse a ete reconnue : lettre extraite, texte exact, rapprochement
+          approche, reponse contenue, fausse, inexploitable, ou erreur d'appel.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [letter, exact, fuzzy, contains, wrong, unparseable, error]
+      - name: response_time
+        description: Duree mesuree cote client autour de l'appel HTTP, en secondes.
+        data_tests: [not_null]
+
+  - name: mart_run_summary
+    description: Performance globale par run, avec intervalle de Wilson et latences.
+    columns:
+      - name: run_id
+        data_tests: [unique, not_null]
+      - name: accuracy
+        data_tests: [not_null]
+
+  - name: mart_accuracy_by_category
+    description: Exactitude par theme, avec signalement des categories a faible effectif.
+
+  - name: mart_accuracy_by_category_difficulty
+    description: Exactitude au croisement theme x difficulte (carte de chaleur du dashboard).
+
+  - name: mart_accuracy_by_difficulty
+    description: Exactitude par difficulte declaree, pour juger de sa calibration.
+
+  - name: mart_accuracy_by_type
+    description: Exactitude par type de question, rapportee au niveau du hasard.
+
+  - name: mart_grade_breakdown
+    description: Repartition des modes de reconnaissance et taux de reponses inexploitables.
+
+  - name: mart_position_bias
+    description: Distribution des lettres predites contre celle des bonnes reponses.
+
+  - name: mart_latency_by_run
+    description: Distribution des temps de reponse par run et par type de question.
+
+  - name: mart_latency_drift
+    description: Evolution du debit au fil du run, pour detecter un ralentissement thermique.
+
+  - name: mart_variant_pairwise
+    description: >
+      Table de contingence appariee entre deux variantes evaluees sur les memes questions.
+      Alimente le test de McNemar affiche dans le dashboard.
+
+  - name: mart_question_consistency
+    description: Questions reussies ou ratees par toutes les variantes, et cas instables.
+
+  - name: mart_answer_length
+    description: Longueur des reponses selon leur exactitude et leur mode de reconnaissance.

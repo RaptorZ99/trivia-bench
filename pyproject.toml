@@ -1,0 +1,84 @@
+[project]
+name = "trivia-bench"
+version = "1.0.0"
+description = "Benchmark d'un LLM local (LM Studio) sur les questions de culture generale d'Open Trivia Database."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+dependencies = [
+    "httpx>=0.28.1,<1",
+    "tenacity>=9.1.4",
+    "polars>=1.44.2",
+    "pyarrow>=25.0.1",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "typer>=0.27.2",
+    "rich>=15.0.0",
+    "loguru>=0.7.3",
+    "rapidfuzz>=3.14.6",
+    "duckdb>=1.5.5",
+    "dbt-core>=1.12.4",
+    "dbt-duckdb>=1.11.0",
+    "streamlit>=1.63.0",
+    "plotly>=6.9,<7",
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "scipy>=1.14",
+]
+
+[project.scripts]
+trivia = "trivia_bench.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trivia_bench"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-httpx>=0.36.2",
+    "ruff>=0.16.6",
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "app"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF", "PTH"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["trivia_bench"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+# Contenu redactionnel : les lignes de tableau Markdown restent lisibles non coupees.
+"app/views/methodology.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["trivia_bench"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "streamlit.*", "plotly.*", "scipy.*", "rapidfuzz.*", "dbt.*"]
+ignore_missing_imports = true

@@ -1,0 +1,12 @@
+# Profil garde dans le depot : les commandes passent `--profiles-dir dbt`.
+# Les chemins relatifs sont resolus depuis le repertoire courant, donc dbt est toujours
+# lance depuis la racine du depot (voir `trivia build`).
+trivia_bench:
+  target: prod
+  outputs:
+    prod:
+      type: duckdb
+      path: "{{ env_var('TRIVIA_DUCKDB_PATH', 'data/gold/benchmark.duckdb') }}"
+      threads: 4
+      retries:
+        connect_attempts: 5

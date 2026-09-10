@@ -1,0 +1,59 @@
+# Theme du dashboard. Les couleurs de graphiques definies ici sont reprises par Plotly
+# lorsque `st.plotly_chart(..., theme="streamlit")`, ce qui garde une palette unique.
+
+[theme]
+base = "light"
+primaryColor = "#5B5BD6"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F6F6FA"
+textColor = "#16161D"
+linkColor = "#4B4ACF"
+borderColor = "#E3E3ED"
+dataframeBorderColor = "#E3E3ED"
+baseRadius = "medium"
+buttonRadius = "full"
+showWidgetBorder = true
+font = "sans-serif"
+baseFontSize = 15
+chartCategoricalColors = [
+  "#5B5BD6", "#12A594", "#FFB224", "#E5484D", "#0091FF",
+  "#8E4EC6", "#46A758", "#F76B15", "#00A2C7", "#E93D82",
+]
+chartSequentialColors = [
+  "#F2F2FD", "#E5E5FA", "#D4D4F6", "#C0C0F1", "#A9A9EB",
+  "#9090E4", "#7676DD", "#5B5BD6", "#4646B8", "#33338F",
+]
+chartDivergingColors = [
+  "#9B1F27", "#C13B3F", "#E5484D", "#F0787C", "#F8B4B6",
+  "#B7DFC0", "#7FC98E", "#46A758", "#2F8442", "#1C5C2C",
+]
+
+[theme.dark]
+backgroundColor = "#0F0F14"
+secondaryBackgroundColor = "#17171F"
+textColor = "#ECECF2"
+linkColor = "#9B9BF0"
+borderColor = "#2A2A38"
+dataframeBorderColor = "#2A2A38"
+chartCategoricalColors = [
+  "#8D8DF2", "#2EBFAE", "#FFC53D", "#FF6369", "#52A9FF",
+  "#B18BE0", "#63C174", "#FF8B3E", "#3DC5E8", "#FF6699",
+]
+
+[theme.sidebar]
+backgroundColor = "#F6F6FA"
+borderColor = "#E3E3ED"
+
+[theme.dark.sidebar]
+backgroundColor = "#13131A"
+borderColor = "#2A2A38"
+
+[server]
+enableStaticServing = true
+runOnSave = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"

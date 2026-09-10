@@ -1,0 +1,49 @@
+{
+  "run_id": "gemma-4-12b-qat__v2_letter__roff__20260910-1017",
+  "model_key": "google/gemma-4-12b-qat",
+  "model_display_name": "Gemma 4 12B QAT",
+  "model_quant": "Q4_0",
+  "model_size_bytes": 7151067268,
+  "instance_identifier": "trivia-bench",
+  "context_length": 4096,
+  "parallel": 1,
+  "prompt_variant": "v2_letter",
+  "prompt_version": "2026-09-10.1",
+  "reasoning_mode": "off",
+  "transport": "native",
+  "generation_params": {
+    "temperature": 0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "repeat_penalty": 1.0,
+    "max_tokens": {
+      "multiple": 8,
+      "boolean": 8
+    },
+    "reasoning": "off"
+  },
+  "lmstudio_version": "0.4.24+1",
+  "runtime_engine": "llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0",
+  "python_version": "3.12.1",
+  "package_version": "1.0.0",
+  "git_sha": "HEAD",
+  "dataset_sha256": "bdfaba1126ea85338c208ac98ee89a98add154bd6998d687f80b6edb2b78d156",
+  "sample_spec": "all",
+  "sample_question_ids": null,
+  "n_questions_planned": 5257,
+  "n_questions_done": 0,
+  "n_errors": 0,
+  "warmup_time_s": null,
+  "machine": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "processor": "arm",
+    "cpu": "Apple M2 Pro",
+    "memory_gb": "16",
+    "macos": "26.6.2"
+  },
+  "started_at": "2026-09-10T10:17:38.802608Z",
+  "finished_at": null,
+  "status": "running"
+}

@@ -1,0 +1,5 @@
+Statement: {question}
+
+Is this statement True or False?
+
+Answer with one word only: True or False.

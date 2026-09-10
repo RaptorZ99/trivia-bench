@@ -1,0 +1,6 @@
+Answer each statement with only True or False.
+
+{examples}
+
+Statement: {question}
+Answer:

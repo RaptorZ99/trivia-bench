@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# uv / venv
+.venv/
+
+# Environnement (le token OpenTDB ne doit jamais etre commite)
+.env
+.env.local
+!.env.example
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+logs/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Caches outils
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+htmlcov/
+.coverage
+
+# Donnees : le checkpoint de scraping et les fichiers temporaires ne sont pas versionnes,
+# le reste des couches bronze/silver/gold l'est volontairement (ADR-12).
+data/bronze/opentdb/checkpoint.json
+data/gold/.build/
+*.duckdb.wal
+*.duckdb.tmp/
+
+# macOS
+.DS_Store

@@ -1,0 +1,10 @@
+Answer each multiple choice question with only the letter of the correct answer.
+
+{examples}
+
+Question: {question}
+A) {A}
+B) {B}
+C) {C}
+D) {D}
+Answer:

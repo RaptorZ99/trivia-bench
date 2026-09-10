@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, typage et tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Installer les dependances
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Formatage
+        run: uv run ruff format --check .
+
+      - name: Typage
+        run: uv run mypy src
+
+      # Les tests couvrent le pipeline complet sur des fixtures : ils n'appellent ni
+      # OpenTDB ni LM Studio, et construisent la couche gold avec dbt dans un dossier
+      # temporaire.
+      - name: Tests
+        run: uv run pytest -q
