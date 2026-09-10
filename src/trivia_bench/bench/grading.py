@@ -39,16 +39,26 @@ _REFUSAL_PHRASES = (
     "i don t know",
     "i do not know",
     "i m not sure",
+    "i am not sure",
+    "not certain",
     "cannot answer",
     "can t answer",
+    "cannot determine",
     "no idea",
     "unable to",
+    "no information",
+    "impossible to say",
 )
 
 _TRUE_TOKENS = frozenset({"true"})
 _FALSE_TOKENS = frozenset({"false"})
+# Les synonymes d'une seule lettre ne valent que si la reponse entiere s'y reduit : cherchees
+# au milieu d'une phrase, elles produisent des faux positifs (« I don't know » se normalise
+# en « i don t know », dont le « t » n'a rien d'une affirmation).
 _TRUE_SYNONYMS = frozenset({"yes", "y", "t", "correct"})
 _FALSE_SYNONYMS = frozenset({"no", "n", "f", "incorrect"})
+_TRUE_WORDS = frozenset({"true", "yes", "correct"})
+_FALSE_WORDS = frozenset({"false", "no", "incorrect"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,7 +188,7 @@ def _grade_boolean(answer: str, question: Question, *, use_cue: bool) -> GradeRe
             text = match.group(1)
 
     normalized = normalize_answer(text)
-    if not normalized or _looks_like_refusal(normalized):
+    if not normalized:
         return GradeResult("unparseable", False)
 
     gold = question.correct_answer.casefold() == "true"
@@ -192,11 +202,12 @@ def _grade_boolean(answer: str, question: Question, *, use_cue: bool) -> GradeRe
         return _boolean_result("fuzzy", predicted, gold)
 
     words = set(normalized.split())
-    found_true = bool(words & (_TRUE_TOKENS | _TRUE_SYNONYMS))
-    found_false = bool(words & (_FALSE_TOKENS | _FALSE_SYNONYMS))
+    found_true = bool(words & _TRUE_WORDS)
+    found_false = bool(words & _FALSE_WORDS)
     if found_true ^ found_false:
         return _boolean_result("contains", found_true, gold)
 
+    # Comme en texte libre, le refus n'est reconnu qu'apres avoir cherche une reponse.
     return GradeResult("unparseable", False)
 
 
@@ -207,10 +218,20 @@ def _boolean_result(grade: Grade, predicted: bool, gold: bool) -> GradeResult:
     return GradeResult("wrong", False, predicted_text=label)
 
 
+def _fuzzy_score(left: str, right: str) -> float:
+    """Similarite de deux reponses normalisees.
+
+    Deux mesures se completent : `token_sort_ratio` absorbe un ordre de mots different,
+    `ratio` absorbe une espace manquante ou une faute de frappe. « leonardo davinci » contre
+    « leonardo da vinci » n'obtient que 67 avec la premiere, mais 97 avec la seconde.
+    """
+    return float(max(fuzz.ratio(left, right), fuzz.token_sort_ratio(left, right)))
+
+
 def _grade_free_text(answer: str, question: Question, *, threshold: float) -> GradeResult:
     """Note une reponse en texte libre (variante V1)."""
     normalized = normalize_answer(answer)
-    if not normalized or _looks_like_refusal(normalized):
+    if not normalized:
         return GradeResult("unparseable", False)
 
     gold = normalize_answer(question.correct_answer)
@@ -218,11 +239,9 @@ def _grade_free_text(answer: str, question: Question, *, threshold: float) -> Gr
     if normalized == gold:
         return GradeResult("exact", True, predicted_text=question.correct_answer, score=100.0)
 
-    score = fuzz.token_sort_ratio(normalized, gold)
+    score = _fuzzy_score(normalized, gold)
     if score >= threshold:
-        return GradeResult(
-            "fuzzy", True, predicted_text=question.correct_answer, score=float(score)
-        )
+        return GradeResult("fuzzy", True, predicted_text=question.correct_answer, score=score)
 
     if len(gold) >= 3 and gold in normalized and not _has_negation_before(normalized, gold):
         return GradeResult("contains", True, predicted_text=question.correct_answer)
@@ -239,6 +258,11 @@ def _grade_free_text(answer: str, question: Question, *, threshold: float) -> Gr
             and not _has_negation_before(normalized, normalized_wrong)
         ):
             return GradeResult("wrong", False, predicted_text=wrong)
+
+    # Le refus n'est teste qu'en dernier : une reponse hesitante qui contient malgre tout la
+    # bonne reponse (« je ne suis pas sur, mais Leonard de Vinci ») doit etre creditee.
+    if _looks_like_refusal(normalized):
+        return GradeResult("unparseable", False)
 
     return GradeResult("wrong", False, predicted_text=answer.strip()[:200] or None)
 

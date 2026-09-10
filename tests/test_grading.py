@@ -154,6 +154,41 @@ def test_grade_free_text(mc_question: Question, answer: str, grade: str, correct
     assert (result.grade, result.ai_correct) == (grade, correct), result
 
 
+@pytest.mark.parametrize(
+    ("answer", "grade", "correct"),
+    [
+        # Faute de frappe ou espace manquante : `ratio` rattrape la ou `token_sort_ratio` echoue.
+        ("Pomodorro", "fuzzy", True),
+        ("Pomo doro", "fuzzy", True),
+        # Un refus reste un refus, quelle que soit sa formulation.
+        ("I am not sure.", "unparseable", False),
+        ("I have no idea", "unparseable", False),
+        ("I cannot answer that", "unparseable", False),
+        ("No information is available", "unparseable", False),
+        # Mais une reponse hesitante qui donne quand meme la bonne reponse est creditee :
+        # le refus n'est teste qu'apres avoir cherche une reponse.
+        ("I am not sure, but I think Pomodoro.", "contains", True),
+        ("Not certain, probably Pomodoro", "contains", True),
+    ],
+)
+def test_free_text_hedging_and_refusals(
+    mc_question: Question, answer: str, grade: str, correct: bool
+) -> None:
+    result = grade_answer(answer, mc_question, expects_letter=False)
+    assert (result.grade, result.ai_correct) == (grade, correct), result
+
+
+def test_boolean_refusal_is_not_read_as_true(bool_question: Question) -> None:
+    """« I don't know » se normalise en « i don t know » : le « t » isole ne vaut pas True."""
+    result = grade_answer("I don't know", bool_question, expects_letter=True)
+    assert (result.grade, result.ai_correct) == ("unparseable", False)
+
+
+def test_boolean_hedged_answer_is_credited(bool_question: Question) -> None:
+    result = grade_answer("I'm not sure, but False.", bool_question, expects_letter=True)
+    assert (result.grade, result.ai_correct) == ("contains", True)
+
+
 def test_free_text_negation_guard(mc_question: Question) -> None:
     result = grade_answer("It is not Pomodoro at all", mc_question, expects_letter=False)
     assert result.ai_correct is False
