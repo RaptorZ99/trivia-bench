@@ -108,6 +108,17 @@ models:
       Table de contingence appariee entre deux variantes evaluees sur les memes questions.
       Alimente le test de McNemar affiche dans le dashboard.
 
+  - name: mart_model_pairwise
+    description: >
+      Table de contingence appariee entre deux modeles, a variante et mode de raisonnement
+      identiques. La jointure sur la question restreint la comparaison a leur intersection,
+      ce qui reste equitable meme si un modele n'a ete evalue que sur un echantillon.
+
+  - name: mart_reasoning_pairwise
+    description: >
+      Effet de l'activation du raisonnement, a modele et variante identiques : gain
+      d'exactitude, facteur de ralentissement et volume de tokens de reflexion.
+
   - name: mart_question_consistency
     description: Questions reussies ou ratees par toutes les variantes, et cas instables.
 

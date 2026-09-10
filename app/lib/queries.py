@@ -74,6 +74,14 @@ def variant_pairwise() -> pl.DataFrame:
     return db.table("gold.mart_variant_pairwise")
 
 
+def model_pairwise() -> pl.DataFrame:
+    return db.table("gold.mart_model_pairwise")
+
+
+def reasoning_pairwise() -> pl.DataFrame:
+    return db.table("gold.mart_reasoning_pairwise")
+
+
 def question_consistency() -> pl.DataFrame:
     return db.table("gold.mart_question_consistency")
 

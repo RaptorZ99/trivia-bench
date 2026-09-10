@@ -1,18 +1,24 @@
-"""Comparaison de modeles et effet du mode de raisonnement."""
+"""Comparaison de modeles et effet du mode de raisonnement.
+
+Les deux comparaisons sont **appariees** : elles portent sur les questions communes aux runs
+compares, ce qui reste equitable meme quand un modele secondaire n'a ete evalue que sur un
+echantillon du jeu de questions.
+"""
 
 from __future__ import annotations
 
+import plotly.graph_objects as go
 import polars as pl
 import streamlit as st
 
-from lib import charts, components, db, queries, theme
+from lib import charts, components, db, queries, stats, theme
 
 
 def render(selection: queries.Selection | None) -> None:
-    """Compare les modeles evalues, a variante egale."""
+    """Compare les modeles evalues et les modes de raisonnement."""
     theme.page_header(
         "Comparaison de modeles",
-        "Meme jeu de questions, memes prompts : ce qui distingue les modeles et les modes.",
+        "Memes questions, memes prompts : ce qui distingue les modeles et les modes.",
     )
 
     if selection is None:
@@ -23,6 +29,8 @@ def render(selection: queries.Selection | None) -> None:
         summary = selection.apply(queries.run_summary())
         by_category = selection.apply(queries.accuracy_by_category())
         runs = selection.apply(queries.runs())
+        model_pairs = queries.model_pairwise()
+        reasoning_pairs = queries.reasoning_pairwise()
     except db.DatabaseUnavailableError as exc:
         st.error(str(exc), icon=":material/database_off:")
         return
@@ -31,102 +39,247 @@ def render(selection: queries.Selection | None) -> None:
         components.empty_state("Aucun run ne correspond aux filtres selectionnes.")
         return
 
-    n_models = summary["model_short"].n_unique()
-    n_modes = summary["reasoning_mode"].n_unique()
-
-    if n_models < 2 and n_modes < 2:
+    if model_pairs.height == 0 and reasoning_pairs.height == 0:
         components.empty_state(
-            "Un seul modele et un seul mode de raisonnement sont disponibles.",
-            "Lancer un second modele avec `uv run trivia bench --model <cle> "
-            "--sample stratified:400`, ou activer le raisonnement avec `--reasoning on`.",
+            "Un seul modele et un seul mode de raisonnement ont ete evalues.",
+            "Comparer un second modele : `uv run trivia bench --all-variants "
+            "--model <cle> --sample stratified:400`. Activer le raisonnement : "
+            "`uv run trivia bench --variant v3_simple_evals --reasoning on "
+            "--sample stratified:400`.",
         )
         _render_configurations(runs)
         return
 
-    if n_models >= 2:
-        _render_model_comparison(summary, by_category)
-    if n_modes >= 2:
-        _render_reasoning_comparison(summary)
+    if model_pairs.height:
+        _render_model_comparison(model_pairs, by_category)
+    if reasoning_pairs.height:
+        _render_reasoning_comparison(reasoning_pairs)
 
     st.space("medium")
     _render_configurations(runs)
 
 
-def _render_model_comparison(summary: pl.DataFrame, by_category: pl.DataFrame) -> None:
-    """Exactitude et latence par modele, variante par variante."""
-    st.subheader("Exactitude par modele et variante")
+def _render_model_comparison(pairs: pl.DataFrame, by_category: pl.DataFrame) -> None:
+    """Exactitude appariee entre deux modeles, variante par variante."""
+    st.subheader("Modele contre modele, a formulation identique")
 
-    common = _common_variants(summary, "model_short")
-    if common.height == 0:
-        components.empty_state("Aucune variante n'est commune aux modeles selectionnes.")
-        return
-
-    best_by_model = (
-        common.group_by("model_short")
-        .agg(pl.col("accuracy").max().alias("accuracy"))
-        .sort("accuracy", descending=True)
-    )
-    leader = best_by_model.row(0, named=True)
-    runner_up = best_by_model.row(min(1, best_by_model.height - 1), named=True)
-    theme.lede(
-        f"Sur les variantes communes, <strong>{leader['model_short']}</strong> atteint au mieux "
-        f"{components.percent(leader['accuracy'])}"
-        + (
-            f", contre {components.percent(runner_up['accuracy'])} pour "
-            f"<strong>{runner_up['model_short']}</strong>."
-            if best_by_model.height > 1
-            else "."
+    combinations = pairs.select("model_a", "model_b").unique().sort(["model_a", "model_b"]).rows()
+    if len(combinations) > 1:
+        choice = st.selectbox(
+            "Paire de modeles",
+            options=combinations,
+            format_func=lambda pair: f"{pair[0]} contre {pair[1]}",
         )
+    else:
+        choice = combinations[0]
+
+    subset = pairs.filter((pl.col("model_a") == choice[0]) & (pl.col("model_b") == choice[1])).sort(
+        "prompt_variant"
     )
 
-    figure = charts.grouped_accuracy_bar(common, x="variant_label", group="model_short", height=400)
-    components.chart(figure, key="models_accuracy")
+    totals = subset.select(
+        pl.col("n").sum().alias("n"),
+        pl.col("a_only").sum().alias("a_only"),
+        pl.col("b_only").sum().alias("b_only"),
+    ).row(0, named=True)
+    overall = stats.mcnemar(int(totals["a_only"]), int(totals["b_only"]))
+    mean_a = float((subset["accuracy_a"] * subset["n"]).sum() / max(totals["n"], 1))
+    mean_b = float((subset["accuracy_b"] * subset["n"]).sum() / max(totals["n"], 1))
+    leader, trailer = (choice[0], choice[1]) if mean_a >= mean_b else (choice[1], choice[0])
+    verdict = "significatif" if overall.significant else "non significatif"
+
+    theme.lede(
+        f"Sur {components.number(subset['n'].max())} questions communes et "
+        f"{subset.height} variante(s), <strong>{leader}</strong> devance "
+        f"<strong>{trailer}</strong> de "
+        f"{components.percent(abs(mean_a - mean_b))} en moyenne. "
+        f"L'ecart est <strong>{verdict}</strong> ({stats.format_p_value(overall.p_value)}, "
+        f"{overall.method})."
+    )
+
+    figure = _paired_bars(
+        subset,
+        label_a=choice[0],
+        label_b=choice[1],
+        column_a="accuracy_a",
+        column_b="accuracy_b",
+    )
+    components.chart(figure, key="models_paired_accuracy")
     theme.note(
-        "Comparaison a variante egale : seules les variantes evaluees par tous les modeles "
-        "affiches sont retenues."
+        "Chaque paire de barres porte sur les memes questions, posees avec le meme prompt. "
+        "Les modeles n'ayant pas forcement ete evalues sur l'ensemble du jeu, la comparaison "
+        "se limite a leur intersection."
     )
 
     st.space("medium")
     left, right = st.columns(2, gap="medium")
 
     with left:
-        st.subheader("Vitesse")
-        figure = charts.accuracy_bar(
-            common.sort("median_response_time"),
-            x="variant_label",
-            y="median_response_time",
-            lo=None,
-            hi=None,
-            n=None,
-            color=theme.CATEGORICAL[1],
-            height=340,
+        st.subheader("Vitesse comparee")
+        figure = _paired_bars(
+            subset,
+            label_a=choice[0],
+            label_b=choice[1],
+            column_a="median_time_a",
+            column_b="median_time_b",
+            as_percent=False,
         )
-        figure.update_yaxes(tickformat=None, ticksuffix=" s", range=None, autorange=True)
-        figure.update_traces(texttemplate="%{y:.2f} s")
-        components.chart(figure, key="models_latency")
+        components.chart(figure, key="models_paired_latency")
 
     with right:
         st.subheader("Profil par famille de themes")
-        _render_group_profile(by_category)
+        _render_group_profile(by_category, models=(choice[0], choice[1]))
+
+    st.space("medium")
+    st.subheader("Detail par variante")
+    display = subset.select(
+        pl.col("variant_label").alias("Variante"),
+        pl.col("n").alias("Questions"),
+        pl.col("accuracy_a").alias(choice[0]),
+        pl.col("accuracy_b").alias(choice[1]),
+        pl.col("accuracy_diff").alias("Ecart"),
+        pl.col("a_only").alias(f"{choice[0]} seul"),
+        pl.col("b_only").alias(f"{choice[1]} seul"),
+        pl.col("median_time_a").alias(f"Temps {choice[0]}"),
+        pl.col("median_time_b").alias(f"Temps {choice[1]}"),
+    )
+    st.dataframe(
+        display,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            choice[0]: st.column_config.NumberColumn(choice[0], format="percent"),
+            choice[1]: st.column_config.NumberColumn(choice[1], format="percent"),
+            "Ecart": st.column_config.NumberColumn("Ecart", format="percent"),
+            f"Temps {choice[0]}": st.column_config.NumberColumn(
+                f"Temps {choice[0]}", format="%.2f s"
+            ),
+            f"Temps {choice[1]}": st.column_config.NumberColumn(
+                f"Temps {choice[1]}", format="%.2f s"
+            ),
+        },
+    )
+    components.download(display, filename="comparaison_modeles.csv")
 
 
-def _render_group_profile(by_category: pl.DataFrame) -> None:
+def _render_reasoning_comparison(pairs: pl.DataFrame) -> None:
+    """Effet de l'activation du raisonnement, a modele et variante egaux."""
+    st.space("medium")
+    st.subheader("Avec et sans raisonnement")
+
+    totals = pairs.select(
+        pl.col("n").sum().alias("n"),
+        pl.col("off_only").sum().alias("off_only"),
+        pl.col("on_only").sum().alias("on_only"),
+    ).row(0, named=True)
+    result = stats.mcnemar(int(totals["on_only"]), int(totals["off_only"]))
+    mean_gain = float((pairs["accuracy_gain"] * pairs["n"]).sum() / max(totals["n"], 1))
+    mean_factor = float(pairs["time_factor"].mean() or 0)
+    median_tokens = float(pairs["median_reasoning_tokens"].median() or 0)
+    verdict = "significatif" if result.significant else "non significatif"
+    direction = "gagne" if mean_gain >= 0 else "perd"
+
+    theme.lede(
+        f"Sur {components.number(totals['n'])} reponses appariees, activer le raisonnement "
+        f"fait <strong>{direction} {components.percent(abs(mean_gain))}</strong> d'exactitude "
+        f"(ecart {verdict}, {stats.format_p_value(result.p_value)}), pour un temps de reponse "
+        f"multiplie par <strong>{mean_factor:.1f}</strong> et environ "
+        f"{components.number(median_tokens)} tokens de reflexion par question."
+    )
+
+    components.kpi_row(
+        [
+            {
+                "label": "Gain d'exactitude",
+                "value": components.percent(mean_gain),
+                "help": "Difference d'exactitude sur les memes questions.",
+                "icon": ":material/psychology:",
+            },
+            {
+                "label": "Rattrapees par le raisonnement",
+                "value": components.number(totals["on_only"]),
+                "help": "Questions ratees sans raisonnement et reussies avec.",
+                "icon": ":material/trending_up:",
+            },
+            {
+                "label": "Perdues avec le raisonnement",
+                "value": components.number(totals["off_only"]),
+                "help": "Questions reussies sans raisonnement et ratees avec.",
+                "icon": ":material/trending_down:",
+            },
+            {
+                "label": "Cout en temps",
+                "value": f"x {mean_factor:.1f}".replace(".", ","),
+                "help": "Rapport des temps de reponse medians.",
+                "icon": ":material/timer:",
+            },
+        ],
+        key="kpi_reasoning",
+    )
+
+    figure = _paired_bars(
+        pairs.sort("prompt_variant"),
+        label_a="sans raisonnement",
+        label_b="avec raisonnement",
+        column_a="accuracy_off",
+        column_b="accuracy_on",
+    )
+    components.chart(figure, key="reasoning_paired_accuracy")
+    theme.note(
+        "Le raisonnement fait produire au modele une reflexion avant sa reponse. Sur des "
+        "questions factuelles, l'enjeu est de savoir si le gain d'exactitude justifie le "
+        "temps supplementaire."
+    )
+
+
+def _paired_bars(
+    frame: pl.DataFrame,
+    *,
+    label_a: str,
+    label_b: str,
+    column_a: str,
+    column_b: str,
+    as_percent: bool = True,
+) -> go.Figure:
+    """Barres groupees deux a deux sur les memes categories."""
+    figure = charts.base_figure(380, showlegend=True)
+    labels = frame["variant_label"].to_list()
+    suffix = "%{y:.1%}" if as_percent else "%{y:.2f} s"
+
+    for index, (name, column) in enumerate(((label_a, column_a), (label_b, column_b))):
+        figure.add_trace(
+            go.Bar(
+                name=name,
+                x=labels,
+                y=frame[column].to_list(),
+                marker_color=theme.CATEGORICAL[index],
+                texttemplate=suffix,
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate=f"<b>{name}</b> · %{{x}}<br>{suffix}<extra></extra>",
+            )
+        )
+    figure.update_layout(barmode="group")
+    if as_percent:
+        figure.update_yaxes(tickformat=".0%", range=[0, 1.12])
+    else:
+        figure.update_yaxes(ticksuffix=" s")
+    return figure
+
+
+def _render_group_profile(by_category: pl.DataFrame, *, models: tuple[str, str]) -> None:
     """Exactitude par famille de categories, un trace par modele."""
-    if by_category.height == 0:
+    subset = by_category.filter(pl.col("model_short").is_in(list(models)))
+    if subset.height == 0:
         return
     grouped = (
-        by_category.group_by(["model_short", "category_group"])
-        .agg(
-            pl.col("n_correct").sum().alias("n_correct"),
-            pl.col("n").sum().alias("n"),
-        )
+        subset.group_by(["model_short", "category_group"])
+        .agg(pl.col("n_correct").sum().alias("n_correct"), pl.col("n").sum().alias("n"))
         .with_columns((pl.col("n_correct") / pl.col("n")).alias("accuracy"))
         .sort("category_group")
     )
 
-    figure = charts.base_figure(340, showlegend=True)
-    import plotly.graph_objects as go
-
+    figure = charts.base_figure(360, showlegend=True)
     for index, model in enumerate(sorted(grouped["model_short"].unique().to_list())):
         part = grouped.filter(pl.col("model_short") == model)
         figure.add_trace(
@@ -135,7 +288,7 @@ def _render_group_profile(by_category: pl.DataFrame) -> None:
                 r=part["accuracy"].to_list(),
                 theta=part["category_group"].to_list(),
                 fill="toself",
-                opacity=0.55,
+                opacity=0.5,
                 line={"color": theme.CATEGORICAL[index % len(theme.CATEGORICAL)]},
                 hovertemplate=f"<b>{model}</b> · %{{theta}}<br>%{{r:.1%}}<extra></extra>",
             )
@@ -148,72 +301,9 @@ def _render_group_profile(by_category: pl.DataFrame) -> None:
         }
     )
     components.chart(figure, key="models_radar")
-
-
-def _render_reasoning_comparison(summary: pl.DataFrame) -> None:
-    """Effet de l'activation du raisonnement, a variante et modele egaux."""
-    st.space("medium")
-    st.subheader("Avec et sans raisonnement")
-
-    common = _common_variants(summary, "reasoning_mode")
-    if common.height == 0:
-        components.empty_state(
-            "Aucune variante n'a ete evaluee dans les deux modes de raisonnement."
-        )
-        return
-
-    pivot = common.select(
-        "variant_label", "reasoning_mode", "accuracy", "median_response_time"
-    ).pivot(on="reasoning_mode", index="variant_label", values=["accuracy", "median_response_time"])
-
-    accuracy_off = f"accuracy_{'off'}"
-    accuracy_on = f"accuracy_{'on'}"
-    time_off = f"median_response_time_{'off'}"
-    time_on = f"median_response_time_{'on'}"
-
-    if accuracy_off in pivot.columns and accuracy_on in pivot.columns:
-        gains = pivot.with_columns(
-            (pl.col(accuracy_on) - pl.col(accuracy_off)).alias("gain"),
-            (pl.col(time_on) / pl.col(time_off)).alias("cost_factor"),
-        ).drop_nulls("gain")
-        if gains.height:
-            mean_gain = float(gains["gain"].mean() or 0)
-            mean_cost = float(gains["cost_factor"].mean() or 0)
-            direction = "gagne" if mean_gain >= 0 else "perd"
-            theme.lede(
-                f"Activer le raisonnement fait {direction} en moyenne "
-                f"<strong>{components.percent(abs(mean_gain))}</strong> d'exactitude, "
-                f"pour un temps de reponse multiplie par <strong>{mean_cost:.1f}</strong>."
-            )
-
-    figure = charts.grouped_accuracy_bar(
-        common.with_columns(
-            pl.col("reasoning_mode")
-            .replace_strict({"off": "sans raisonnement", "on": "avec raisonnement"}, default="?")
-            .alias("mode_label")
-        ),
-        x="variant_label",
-        group="mode_label",
-        height=380,
-    )
-    components.chart(figure, key="reasoning_accuracy")
     theme.note(
-        "Le raisonnement fait produire au modele une reflexion avant sa reponse. Sur des "
-        "questions factuelles, il coute surtout du temps ; l'interet est de mesurer si le "
-        "gain d'exactitude le justifie."
-    )
-
-
-def _common_variants(summary: pl.DataFrame, dimension: str) -> pl.DataFrame:
-    """Restreint aux variantes presentes pour toutes les valeurs d'une dimension."""
-    n_values = summary[dimension].n_unique()
-    counts = (
-        summary.group_by("prompt_variant")
-        .agg(pl.col(dimension).n_unique().alias("covered"))
-        .filter(pl.col("covered") == n_values)
-    )
-    return summary.join(counts.select("prompt_variant"), on="prompt_variant", how="inner").sort(
-        "prompt_variant"
+        "Toutes variantes confondues : le profil montre les familles de themes ou chaque "
+        "modele est relativement plus a l'aise."
     )
 
 
