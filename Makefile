@@ -3,7 +3,7 @@ MODEL ?= google/gemma-4-12b-qat
 CONTEXT ?= 4096
 
 .PHONY: help setup lint format test typecheck check scrape clean-data load-model unload-model \
-        bench bench-all grade build docs dashboard all
+        bench bench-all watch grade build docs dashboard all
 
 help:  ## Affiche cette aide
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -42,10 +42,13 @@ load-model:  ## Charge le modele dans LM Studio
 unload-model:  ## Decharge le modele
 	$(LMS) unload --all
 
+watch:  ## Suit une campagne en cours en temps reel
+	./scripts/watch.sh
+
 bench:  ## Lance une variante (make bench VARIANT=v1_letter)
 	uv run trivia bench --variant $(VARIANT)
 
-bench-all:  ## Lance les 4 variantes
+bench-all:  ## Lance les 3 variantes
 	uv run trivia bench --all-variants
 
 grade:  ## Note tous les runs (bronze -> silver answers)

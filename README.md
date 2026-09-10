@@ -315,6 +315,7 @@ un run complet dure environ une heure par variante.
 | `make check` | Vérifications LM Studio | 10 s |
 | `make bench VARIANT=v1_letter` | Une variante sur tout le jeu | ~1 h |
 | `make bench-all` | Les trois variantes | ~3 h 30 |
+| `make watch` | Suit une campagne en cours, barre de progression et estimation | — |
 | `make grade` | Renote tous les runs | quelques secondes |
 | `make build` | Couche gold avec dbt | < 1 min |
 | `make docs` | Documentation dbt statique | quelques secondes |
