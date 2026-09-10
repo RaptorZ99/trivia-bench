@@ -43,18 +43,20 @@ for variant in "${VARIANTS[@]}"; do
     uv run trivia bench --variant "$variant" "${args[@]}" 2>&1 | tr '\r' '\n' | grep -viE '^\s*$' | tail -6
 
     # Le manifeste fait foi : `complete` signifie que toutes les questions ont ete traitees.
-    if uv run python - "$variant" "$REASONING" "${SAMPLE:-all}" <<'PY'
+    if uv run python - "$variant" "$REASONING" "${SAMPLE:-all}" "${MODEL:-}" <<'PY'
 import sys
 from trivia_bench.bench.runner import find_resumable_run
 from trivia_bench.config import get_settings
 from trivia_bench.paths import DataPaths
 
-variant, reasoning, sample = sys.argv[1], sys.argv[2], sys.argv[3]
+variant, reasoning, sample, model = sys.argv[1:5]
 settings = get_settings()
 paths = DataPaths(settings.data_dir)
+# Le modele doit etre celui du run, pas celui du .env : sinon un run interrompu sur un
+# autre modele passe pour termine et la campagne l'abandonne a mi-chemin.
 pending = find_resumable_run(
     paths,
-    model_key=settings.lmstudio_model_key,
+    model_key=model or settings.lmstudio_model_key,
     variant_id=variant,
     reasoning_mode=reasoning,
     sample_spec=sample,
