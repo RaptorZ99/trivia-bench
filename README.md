@@ -4,7 +4,7 @@ Benchmark d'un modèle de langage exécuté localement sur les 5 261 questions d
 d'[Open Trivia Database](https://opentdb.com), avec un pipeline de données complet en
 architecture médaillon et un rapport interactif.
 
-[![CI](https://github.com/USER/trivia-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/trivia-bench/actions/workflows/ci.yml)
+[![CI](https://github.com/RaptorZ99/trivia-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/RaptorZ99/trivia-bench/actions/workflows/ci.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 ![Licence MIT](https://img.shields.io/badge/licence-MIT-green)
 
