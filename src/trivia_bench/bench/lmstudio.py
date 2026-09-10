@@ -207,7 +207,6 @@ class LMStudioClient:
         body: dict[str, Any] = {
             "model": request.model_key,
             "input": request.user,
-            "reasoning": request.reasoning_mode,
             "temperature": 0,
             "top_k": 1,
             "top_p": 1.0,
@@ -216,6 +215,8 @@ class LMStudioClient:
             "max_output_tokens": request.max_tokens,
             "store": False,
         }
+        if request.supports_reasoning:
+            body["reasoning"] = request.reasoning_mode
         if request.system:
             body["system_prompt"] = request.system
 
@@ -260,7 +261,7 @@ class LMStudioClient:
             "repeat_penalty": 1.0,
             "max_tokens": request.max_tokens,
         }
-        if request.reasoning_mode == "off":
+        if request.supports_reasoning and request.reasoning_mode == "off":
             body["reasoning_effort"] = "none"
         if request.json_schema is not None:
             body["response_format"] = {

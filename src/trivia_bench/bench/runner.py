@@ -172,6 +172,20 @@ def run_benchmark(
                 f"Le modele {model_key} n'est pas charge dans LM Studio. "
                 f"Lancer : lms load {model_key} --context-length 4096 --parallel 1 -y"
             )
+        # Un modele sans raisonnement configurable rejette le champ correspondant : ses
+        # editeurs publient la version raisonnante comme un modele distinct.
+        supports_reasoning = bool(info.reasoning_options)
+        if reasoning_mode == "on" and not supports_reasoning:
+            raise RuntimeError(
+                f"Le modele {model_key} n'expose aucune configuration de raisonnement : "
+                "il ne peut pas etre evalue avec --reasoning on."
+            )
+        if not supports_reasoning:
+            logger.info(
+                "{} n'expose pas de raisonnement : aucun parametre correspondant n'est envoye.",
+                model_key,
+            )
+
         if info.parallel and info.parallel != 1:
             logger.warning(
                 "Le modele est charge avec parallel={} : les latences peuvent etre biaisees "
@@ -222,6 +236,7 @@ def run_benchmark(
             WARMUP_QUESTION,
             model_key=model_key,
             reasoning_mode=reasoning_mode,
+            supports_reasoning=supports_reasoning,
             fewshot=examples["multiple"],
             max_tokens=max_tokens,
         )
@@ -272,6 +287,7 @@ def run_benchmark(
                     question,
                     model_key=model_key,
                     reasoning_mode=reasoning_mode,
+                    supports_reasoning=supports_reasoning,
                     fewshot=examples[question.type],
                     max_tokens=max_tokens,
                 )

@@ -168,6 +168,7 @@ def render_request(
     *,
     model_key: str,
     reasoning_mode: str = "off",
+    supports_reasoning: bool = True,
     fewshot: list[Question] | None = None,
     max_tokens: int | None = None,
 ) -> tuple[LLMRequest, str]:
@@ -179,6 +180,7 @@ def render_request(
         user=user,
         max_tokens=max_tokens or variant.max_tokens[question.type],
         reasoning_mode=reasoning_mode,  # type: ignore[arg-type]
+        supports_reasoning=supports_reasoning,
         json_schema=variant.json_schema(question.type),
     )
     return request, prompt_hash(system, user)

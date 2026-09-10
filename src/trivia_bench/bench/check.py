@@ -148,8 +148,14 @@ def run_checks(
             return False
 
         # 4. Raisonnement desactivable, sur l'endpoint des variantes en texte court
+        supports_reasoning = bool(info.reasoning_options)
         plain = LLMRequest(
-            model_key=key, system=_SYSTEM, user=_USER, max_tokens=8, reasoning_mode="off"
+            model_key=key,
+            system=_SYSTEM,
+            user=_USER,
+            max_tokens=8,
+            reasoning_mode="off",
+            supports_reasoning=supports_reasoning,
         )
         first = client.complete(plain)
         ok_plain = first.error is None and first.reasoning_tokens == 0 and first.content.strip()
@@ -157,8 +163,13 @@ def run_checks(
             CheckResult(
                 "Raisonnement desactive",
                 bool(ok_plain),
-                f"reponse {first.content.strip()!r} · {first.completion_tokens} tokens · "
-                f"{first.reasoning_tokens} token(s) de raisonnement"
+                (
+                    f"reponse {first.content.strip()!r} · {first.completion_tokens} tokens · "
+                    f"{first.reasoning_tokens} token(s) de raisonnement"
+                    if supports_reasoning
+                    else f"reponse {first.content.strip()!r} · {first.completion_tokens} tokens · "
+                    "le modele n'expose aucun raisonnement, rien a desactiver"
+                )
                 + (f" · erreur : {first.error}" if first.error else ""),
             )
         )
@@ -228,6 +239,7 @@ def run_checks(
             user=_USER,
             max_tokens=24,
             reasoning_mode="off",
+            supports_reasoning=supports_reasoning,
             json_schema={
                 "type": "object",
                 "properties": {"answer": {"type": "string", "enum": ["A", "B", "C", "D"]}},

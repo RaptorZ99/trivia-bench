@@ -89,6 +89,10 @@ class LLMRequest(BaseModel):
     user: str
     max_tokens: int = Field(gt=0)
     reasoning_mode: ReasoningMode = "off"
+    # Tous les modeles n'ont pas de raisonnement a configurer : certains editeurs publient
+    # la version raisonnante comme un modele distinct. L'endpoint natif rejette alors le
+    # champ `reasoning` en HTTP 400, et il ne faut donc pas l'envoyer.
+    supports_reasoning: bool = True
     json_schema: dict[str, Any] | None = None
 
     @property

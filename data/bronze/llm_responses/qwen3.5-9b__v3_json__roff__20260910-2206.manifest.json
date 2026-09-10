@@ -26,7 +26,7 @@
   },
   "lmstudio_version": "0.4.24+1",
   "runtime_engine": "llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0",
-  "model_format": null,
+  "model_format": "gguf",
   "python_version": "3.12.1",
   "package_version": "1.0.0",
   "git_sha": "99a7f6d6fb0fce8307ee438d8cc7e7c98466a01f",
@@ -34,12 +34,12 @@
   "sample_spec": "all",
   "sample_question_ids": null,
   "n_questions_planned": 5257,
-  "n_questions_done": 0,
+  "n_questions_done": 5257,
   "n_errors": 0,
-  "warmup_time_s": null,
-  "context_length_end": null,
-  "parallel_end": null,
-  "instance_identifier_end": null,
+  "warmup_time_s": 1.1771937920129858,
+  "context_length_end": 4096,
+  "parallel_end": 1,
+  "instance_identifier_end": "trivia-bench",
   "config_changed": false,
   "machine": {
     "platform": "macOS-26.6.2-arm64-arm-64bit",
@@ -50,6 +50,6 @@
     "macos": "26.6.2"
   },
   "started_at": "2026-09-10T22:06:00.694565Z",
-  "finished_at": null,
-  "status": "running"
+  "finished_at": "2026-09-10T23:52:32.228100Z",
+  "status": "complete"
 }
