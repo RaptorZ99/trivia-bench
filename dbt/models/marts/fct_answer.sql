@@ -31,6 +31,12 @@ select
     a.grade,
     a.grade_score,
     a.grade not in ('unparseable', 'error')      as is_parsed,
+    -- Le format demande depend du type : une lettre en choix multiples, le mot lui-meme
+    -- en vrai/faux. Distinguer les deux evite de compter une reponse conforme comme un ecart.
+    (
+        (q.type = 'multiple' and a.grade = 'letter')
+        or (q.type = 'boolean' and a.grade in ('exact', 'letter'))
+    )                                            as is_expected_format,
     case when q.type = 'multiple' then 0.25 else 0.5 end as chance_baseline,
 
     a.response_time,

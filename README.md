@@ -161,10 +161,14 @@ Deux colonnes sortent de la notation :
 - **`grade`** : *comment* la correspondance a été établie, ce qui sépare deux échecs de nature
   différente.
 
+Le format attendu dépend du type de question : **une lettre** en choix multiples, **le mot
+lui-même** en vrai/faux. Les deux premières notations correspondent donc au format demandé,
+chacune pour son type.
+
 | Notation | Signification |
 |---|---|
-| `letter` | Le modèle a répondu par la lettre attendue |
-| `exact` | Il a écrit le texte de l'option, après normalisation |
+| `letter` | Le modèle a répondu par la lettre attendue (format demandé en choix multiples) |
+| `exact` | Il a écrit la réponse en toutes lettres (format demandé en vrai/faux) |
 | `fuzzy` | Similarité ≥ 90 avec l'option, et écart ≥ 5 points avec la deuxième meilleure |
 | `contains` | La bonne réponse figure dans une phrase, sans négation devant |
 | `wrong` | Une réponse a été identifiée, mais elle est incorrecte |

@@ -230,15 +230,32 @@ def _render_breakdown(summary: pl.DataFrame, grades: pl.DataFrame) -> None:
     )
     components.chart(figure, key="grade_breakdown")
     theme.note(
-        "« Lettre extraite » signifie que le modele a respecte la consigne. « Texte exact » et "
-        "« Reponse contenue » indiquent qu'il a repondu juste, mais hors format. "
-        "« Inexploitable » est un echec de format, pas de connaissance."
+        "Le format demande depend du type de question : une lettre en choix multiples, le mot "
+        "lui-meme en vrai/faux. « Lettre extraite » et « Texte exact » correspondent donc au "
+        "format attendu, chacun pour son type. « Rapprochement approche » et « Reponse "
+        "contenue » signalent une reponse juste mais hors format. « Inexploitable » est un "
+        "echec de format, pas de connaissance : le modele repond le plus souvent qu'aucune "
+        "option ne convient."
     )
 
     st.space("medium")
     left, right = st.columns(2, gap="medium")
 
     with left:
+        st.subheader("Conformite au format demande")
+        figure = charts.accuracy_bar(
+            summary.sort("format_compliance_rate", descending=True),
+            x="variant_label",
+            y="format_compliance_rate",
+            lo=None,
+            hi=None,
+            color=theme.PRIMARY,
+            height=340,
+        )
+        components.chart(figure, key="format_compliance")
+        theme.note("Part des reponses rendues exactement dans le format demande, sans rattrapage.")
+
+    with right:
         st.subheader("Taux de reponses inexploitables")
         figure = charts.accuracy_bar(
             summary.sort("unparseable_rate", descending=True),
@@ -252,22 +269,22 @@ def _render_breakdown(summary: pl.DataFrame, grades: pl.DataFrame) -> None:
         figure.update_yaxes(range=None, autorange=True)
         components.chart(figure, key="unparseable_rate")
 
-    with right:
-        st.subheader("Exactitude sur les seules reponses exploitables")
-        figure = charts.accuracy_bar(
-            summary.sort("accuracy_parsed_only", descending=True),
-            x="variant_label",
-            y="accuracy_parsed_only",
-            lo=None,
-            hi=None,
-            color=theme.CORRECT,
-            height=340,
-        )
-        components.chart(figure, key="accuracy_parsed")
-        theme.note(
-            "En excluant les reponses inexploitables du denominateur, on isole la "
-            "connaissance de la capacite a respecter un format."
-        )
+    st.space("medium")
+    st.subheader("Exactitude sur les seules reponses exploitables")
+    figure = charts.accuracy_bar(
+        summary.sort("accuracy_parsed_only", descending=True),
+        x="variant_label",
+        y="accuracy_parsed_only",
+        lo=None,
+        hi=None,
+        color=theme.CORRECT,
+        height=340,
+    )
+    components.chart(figure, key="accuracy_parsed")
+    theme.note(
+        "En excluant les reponses inexploitables du denominateur, on isole la connaissance "
+        "de la capacite a respecter un format."
+    )
 
 
 def _render_templates(summary: pl.DataFrame) -> None:
