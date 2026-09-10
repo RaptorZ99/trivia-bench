@@ -458,7 +458,14 @@ fixtures. La CI GitHub Actions rejoue l'ensemble sans accès réseau ni LM Studi
 - **Catégories déséquilibrées** : de 36 à 1 150 questions selon le thème. Les intervalles des
   petites catégories sont larges et signalés comme tels.
 - **Machine unique** : les temps valent pour un MacBook Pro M2 Pro à un instant donné. La dérive
-  thermique est mesurée dans le dashboard.
+  est mesurée dans le dashboard.
+- **Temps de réponse et charge de la machine** : `response_time` est un temps de bout en bout, pris
+  au chronomètre côté client sur une station de travail partagée, et il absorbe toute activité
+  concurrente. Mesuré sur un même run selon que la machine était au repos ou occupée : médiane
+  +20 %, 9ᵉ décile +37 %, maximum +82 %, écart-type multiplié par 2,9. Les statistiques du moteur
+  d'inférence ne bougent pas — le débit varie de moins de 2 %. Les comparaisons de vitesse
+  s'appuient donc sur le débit et le temps au premier token ; le temps de bout en bout est rapporté
+  pour ce qu'il est, ses valeurs extrêmes reflétant la machine autant que le modèle.
 - **Reproductibilité** : même en décodage glouton, l'arithmétique flottante sur GPU ne garantit
   pas des sorties strictement identiques d'une exécution à l'autre.
 - **Notation automatique** : le mode de reconnaissance est conservé pour chaque réponse, ce qui
