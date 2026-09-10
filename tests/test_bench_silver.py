@@ -85,6 +85,7 @@ def paths(tmp_path: Path, questions: list[Question]) -> DataPaths:
                         "prompt_tokens": 70,
                         "completion_tokens": 2,
                         "reasoning_tokens": 0,
+                        "max_tokens": 8,
                         "tokens_per_second": 21.0,
                         "ttft_s": 0.13,
                         "finish_reason": "stop",
@@ -150,6 +151,11 @@ def test_metadata_is_carried_over(graded: pl.DataFrame) -> None:
     assert row["prompt_variant"] == "v2_letter"
     assert row["reasoning_mode"] == "off"
     assert row["transport"] == "native"
+
+
+def test_token_budget_is_recorded(graded: pl.DataFrame) -> None:
+    """La limite demandee est conservee : sans elle, la troncature n'est pas detectable."""
+    assert graded["max_tokens"].to_list() == [8, 8, 8]
 
 
 def test_timing_columns(graded: pl.DataFrame) -> None:

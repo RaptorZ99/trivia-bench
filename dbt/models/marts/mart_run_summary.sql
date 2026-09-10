@@ -13,6 +13,7 @@ with agg as (
         count_if(grade = 'error')                  as n_error,
         count_if(is_parsed)                        as n_parsed,
         count_if(is_expected_format)               as n_expected_format,
+        count_if(is_truncated)                     as n_truncated,
         count_if(ai_correct and is_parsed)         as n_correct_parsed,
         {{ chance_baseline() }}                    as chance_baseline,
         median(response_time)                      as median_response_time,
@@ -35,6 +36,7 @@ select
     n_correct_parsed::double / nullif(n_parsed, 0)      as accuracy_parsed_only,
     n_unparseable::double / nullif(n, 0)                as unparseable_rate,
     n_expected_format::double / nullif(n, 0)            as format_compliance_rate,
+    n_truncated::double / nullif(n, 0)                  as truncation_rate,
     n_correct::double / nullif(n, 0) - chance_baseline  as accuracy_above_chance,
     {{ wilson_lo('n_correct', 'n') }}                   as wilson_lo,
     {{ wilson_hi('n_correct', 'n') }}                   as wilson_hi

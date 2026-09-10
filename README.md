@@ -175,6 +175,15 @@ chacune pour son type.
 | `unparseable` | Aucune réponse identifiable : échec de **format**, pas de connaissance |
 | `error` | L'appel au modèle a échoué après plusieurs tentatives |
 
+**Budget de tokens et troncature.** Chaque variante fixe une longueur maximale de réponse,
+enregistrée avec chaque appel. Une réponse conforme tient en un ou deux tokens ; le budget en
+accorde quatre fois plus. Sur la première variante, 98,7 % des réponses font deux tokens et
+seules 1,0 % atteignent la limite — dont 51 sur 54 commencent par un refus explicite de choisir
+(« None of the options provided are correct »). La troncature ne concerne donc que des réponses
+déjà hors format, et la colonne `is_truncated` de la couche gold permet de le vérifier à tout
+moment. L'endpoint natif de LM Studio ne renvoyant pas de `finish_reason`, c'est la comparaison
+entre tokens générés et budget demandé qui fait foi.
+
 La normalisation décode les entités HTML, retire les accents, la ponctuation (donc aussi la mise
 en forme Markdown que le modèle produit spontanément) et les articles. Une garde anti-négation
 évite de créditer une bonne réponse citée pour être réfutée (« ce n'est pas Mercure, mais Vénus »).

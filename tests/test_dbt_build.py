@@ -76,6 +76,7 @@ def _answers(run_id: str, variant: str, correctness: list[bool]) -> list[dict[st
             "prompt_tokens": 70,
             "completion_tokens": 2,
             "reasoning_tokens": 0,
+            "max_tokens": 8,
             "finish_reason": "stop",
             "run_order": index,
             "attempt": 1,
@@ -250,6 +251,16 @@ def test_question_consistency(gold: Path) -> None:
     # La question 2 est ratee par les deux runs.
     wrong_everywhere = [row[0] for row in rows if row[4]]
     assert wrong_everywhere == ["2" * 64]
+
+
+def test_truncation_is_flagged(gold: Path) -> None:
+    """Une reponse atteignant le budget de tokens est signalee comme tronquee."""
+    rows = _query(
+        gold,
+        "select count(*) filter (where is_truncated), count(*) from gold.fct_answer",
+    )
+    # Les fixtures generent deux tokens pour un budget de huit : aucune troncature.
+    assert rows == [(0, 8)]
 
 
 def test_staging_views_are_readable(gold: Path) -> None:

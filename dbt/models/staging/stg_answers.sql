@@ -22,6 +22,7 @@ select
     prompt_tokens::integer    as prompt_tokens,
     completion_tokens::integer as completion_tokens,
     reasoning_tokens::integer as reasoning_tokens,
+    max_tokens::integer       as max_tokens,
     finish_reason,
     run_order::integer        as run_order,
     attempt::tinyint          as attempt,
