@@ -89,7 +89,11 @@ PROMPT_VARIANTS: dict[str, PromptVariant] = {
                 "La question seule, sans options ni consigne de format. Mesure la connaissance "
                 "en rappel actif, sans la bequille de la reconnaissance parmi des propositions."
             ),
-            max_tokens={"multiple": 64, "boolean": 64},
+            # Seule variante ou le modele repond en toutes lettres, souvent en placant le mot
+            # cle en fin de phrase. Un budget trop court couperait la reponse avant lui et la
+            # ferait passer pour fausse. Le budget n'est consomme que si le modele l'utilise :
+            # l'elargir ne coute rien sur les reponses breves.
+            max_tokens={"multiple": 160, "boolean": 160},
             expects_letter=False,
             order=1,
         ),
