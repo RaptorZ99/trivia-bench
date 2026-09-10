@@ -122,12 +122,13 @@ temps mesure pour chaque question.
 **Appel de chauffe.** Le premier appel de chaque run paie la mise en cache du prompt systeme
 et l'allocation memoire. Il est effectue sur une question hors jeu et exclu des mesures.
 
-**Raisonnement desactive partout.** Gemma 4 raisonne par defaut : sur une question
-factuelle, ce mode consomme l'essentiel du budget de tokens en reflexion, environ 5 s par
-question au lieu de 0,9. L'axe « avec ou sans raisonnement » a ete abandonne plutot que
-traite a une autre echelle : mesure sur le jeu complet il aurait demande une soixantaine
-d'heures, et mesure sur un echantillon il n'aurait plus ete comparable au reste. Un run avec
-raisonnement reste possible, la colonne existe, mais aucun n'est publie ici.
+**Raisonnement desactive partout.** Deux des modeles evalues raisonnent par defaut : sur une
+question factuelle, ce mode consomme l'essentiel du budget de tokens en reflexion, environ 5 s
+par question au lieu de 0,9. Le troisieme est un point de repere utile, car son editeur publie
+la version raisonnante comme un modele distinct : celui qu'on evalue ne contient pas de chaine
+de pensee, il n'y a donc rien a desactiver. L'axe « avec ou sans raisonnement » a ete abandonne
+plutot que traite a une autre echelle : mesure sur le jeu complet il aurait demande une
+soixantaine d'heures, et mesure sur un echantillon il n'aurait plus ete comparable au reste.
 
 **L'endpoint decoule de ce que la variante exige.** LM Studio expose trois endpoints de
 completion. Les variantes en texte court passent par l'endpoint natif, qui renvoie les

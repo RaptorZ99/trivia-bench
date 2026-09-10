@@ -6,7 +6,7 @@
 | **Statut** | EN REVUE (aucune implémentation tant que la spec n'est pas validée) |
 | **Auteurs** | Équipe M2 DEV (groupe de 3) + assistant |
 | **Rendu** | 30 septembre 2026 — dépôt GitHub + README + application Streamlit |
-| **Modèle cible** | `google/gemma-4-12b-qat` (GGUF Q4_0, 7,15 Go) via LM Studio 0.4.24 |
+| **Modèles évalués** | `google/gemma-4-12b-qat`, `qwen/qwen3.5-9b`, `mistralai/ministral-3-8b` — tous en GGUF via LM Studio 0.4.24 (section 1.4) |
 | **Machine** | MacBook Pro Apple M2 Pro, 16 Go de mémoire unifiée, macOS |
 
 Ce document est la **source de vérité** de l'implémentation. Toute divergence entre le code et la spec se résout en mettant la spec à jour d'abord, puis le code.
@@ -69,14 +69,26 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 |---|---|---|
 | **Réseau d'entreprise** [VÉRIFIÉ] | Le réseau du bureau (Cato Networks) **bloque `opentdb.com`** (page de blocage HTTP 403, catégorie « Games ») et intercepte le TLS (CA « Cato Networks Root CA », absente des trousseaux macOS). PyPI, GitHub, Hugging Face, hub dbt et sites de doc sont accessibles avec un TLS normal. | Le scraping (≈ 25 min) doit être lancé **depuis un autre réseau** (domicile, partage de connexion mobile). Le scraper est conçu pour reprendre après interruption. |
 | **Volume OpenTDB** [DOC, via proxy de lecture] | 5 298 questions « verified » (seul pool servi par l'API) sur 21 617 en base, 24 catégories (IDs 9 à 32), 50 questions max par appel, 1 appel / 5 s / IP. | 117 appels de données + 26 appels de service ≈ 12 min incompressibles, 20 à 35 min en pratique. |
-| **Machine** [VÉRIFIÉ] | 16 Go unifiés. Gemma 4 12B QAT Q4_0 : 7,15 Go sur disque, **7,49 Gio estimés** en mémoire avec un contexte de 4 096 tokens. | Contexte limité à 4 096 tokens, un seul modèle chargé, exécution séquentielle. |
+| **Machine** [VÉRIFIÉ] | 16 Go unifiés. Les trois modèles pèsent 6,0 à 7,2 Go sur disque et 5,8 à 7,5 Gio en mémoire avec un contexte de 4 096 tokens. | Contexte limité à 4 096 tokens, un seul modèle chargé à la fois, exécution séquentielle. |
 | **Format des modèles** [VÉRIFIÉ] | LM Studio sert les modèles GGUF par `llama.cpp` et les modèles MLX par `mlx-llm`, deux moteurs aux performances différentes. Le build MLX de la famille `qwen3_5` ignore la longueur de contexte demandée : son ajustement automatique la réécrit vers ce que la mémoire permet (32 768 obtenus pour 4 096 demandés). | Les deux modèles évalués sont chargés en **GGUF**, avec le même contexte et le même moteur : sans quoi l'écart de latence entre modèles mesurerait aussi l'écart entre moteurs. |
 | **LM Studio** [VÉRIFIÉ] | Application 0.4.24, runtime `llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0`, CLI `lms` dans `~/.lmstudio/bin` (pas dans le `PATH`). Serveur local sur le port 1234. Clé du modèle : `google/gemma-4-12b-qat`, architecture `gemma4`, contexte max 262 144. | Le Makefile et la CLI utilisent le chemin complet de `lms`. |
 | **Gemma 4 « thinking »** [VÉRIFIÉ] | Le raisonnement est **actif par défaut**. Sans le désactiver, le modèle consomme tout son budget de tokens en raisonnement et ne répond pas (voir annexe A). Il se désactive **par requête** avec `reasoning: "off"` (API REST native `/api/v1/chat`) ou `reasoning_effort: "none"` (endpoint compatible OpenAI). Le SDK Python `lmstudio` 1.5.0 (dernière version stable, août 2025) **ne peut pas** le désactiver et laisse fuiter un marqueur interne dans le texte de réponse. | Le client LLM utilise l'API REST de LM Studio via `httpx` (ADR-04). |
 | **Sortie structurée et statistiques** [VÉRIFIÉ] | LM Studio expose trois endpoints de complétion. `/api/v1/chat` renvoie les statistiques moteur et rejette les clés inconnues, mais refuse `response_format` (HTTP 400 `unrecognized_keys`). `/v1/chat/completions` accepte `response_format` mais ne renvoie aucun bloc `stats`. `/api/v0/chat/completions` accepte `response_format` de type `json_schema` **et** renvoie `stats`. | Une variante à sortie contrainte ne peut pas rester sur l'endpoint natif. Elle passe par `/api/v0/chat/completions`, seul des deux endpoints compatibles à renvoyer aussi les statistiques moteur : toutes les variantes portent ainsi les mêmes colonnes. |
 | **Calendrier** | Sessions les 10, 11 et 30 septembre 2026. | Les runs longs (≈ 4 h de machine) se font entre les sessions ; tout est reprenable. |
 
-### 1.3 Objectifs de qualité
+### 1.3 Modèles évalués — ADR-15
+
+Trois modèles, un par grand éditeur, tous exécutés localement dans la même configuration : build GGUF servi par `llama.cpp`, contexte de 4 096 tokens, un seul emplacement de prédiction. Les écarts mesurés viennent donc des modèles, pas du montage.
+
+| Clé LM Studio | Éditeur | Paramètres | Quantization | Taille | Raisonnement |
+|---|---|---|---|---|---|
+| `google/gemma-4-12b-qat` | Google (États-Unis) | 12 B | Q4_0 (QAT) | 7,15 Go | actif par défaut, désactivé par requête |
+| `qwen/qwen3.5-9b` | Alibaba (Chine) | 9 B | Q4_K_M | 6,55 Go | actif par défaut, désactivé par requête |
+| `mistralai/ministral-3-8b` | Mistral (France) | 8 B | Q4_K_M | 6,06 Go | **absent du modèle** |
+
+Le cas de Ministral mérite d'être souligné : son éditeur publie la version raisonnante comme un **modèle distinct** (`ministral-3-8b-reasoning`). La variante *Instruct* retenue ici ne contient aucune chaîne de pensée. Là où les deux autres exigent un paramètre par requête — qui dépend du template de chat appliqué correctement et peut donc cesser de fonctionner sans erreur —, ce modèle n'a rien à désactiver. Le garde-fou `ReasoningLeakError` couvre les trois de la même façon, mais il n'a rien à surveiller sur celui-ci.
+
+### 1.4 Objectifs de qualité
 
 - **Reproductibilité** : chaque run est décrit par un manifeste (modèle, quantization, versions, paramètres de génération, hash du jeu de données, commit git). Décodage glouton, exécution séquentielle, shuffle déterministe des options.
 - **Rigueur statistique** : intervalles de Wilson sur toutes les proportions, test de McNemar apparié pour comparer deux variantes de prompt, baseline du hasard par type de question, catégories à petit effectif signalées.
@@ -103,7 +115,7 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **ADR-12** | Les données sont **versionnées dans git** (bronze, silver, gold) pour un livrable auto-porteur, avec un budget de 60 Mo ; au-delà, Git LFS. Les prompts rendus ne sont pas stockés ligne à ligne (seulement leur hash), ils sont régénérables. | Données hors git | Les correcteurs doivent pouvoir lancer le dashboard sans relancer 4 h de benchmark. |
 | **ADR-13** | Logs avec loguru ; tests avec pytest + pytest-httpx ; lint et format avec ruff ; typage mypy strict sur `src/` ; hooks pre-commit ; CI GitHub Actions (lint, tests, `dbt build` sur fixtures). | stdlib logging, black + flake8 | Moins de configuration, un seul outil de lint [DOC]. |
 | **ADR-14** | Trois variantes de prompt (V1 lettre seule, V2 few-shot, V3 JSON contraint), chacune déclinée pour les questions booléennes. Toutes affichent les options, attendent une réponse courte, et seule change la manière d'obtenir le format. | Une variante en texte libre sans options affichées ; une variante « contrat de sortie » (convention OpenAI simple-evals) | Chaque variante retenue isole un mécanisme : instruction nue, démonstration par l'exemple, contrainte grammaticale. Deux ont été écartées après mesure. La variante en texte libre exigeait de juger du texte libre, avec une erreur de notation irréductible. La variante « contrat de sortie » impose la réponse en dernière ligne (`Answer: $LETTER`) : le modèle y délibère en prose sur 33 tokens de médiane malgré la consigne inverse du prompt système, et 10,5 % des réponses sont coupées par le budget de tokens avant d'atteindre la lettre. Son score mesurerait le budget accordé plutôt que la formulation. |
-| **ADR-15** | Comparaison multi-modèles prévue par construction (`model_key` dans chaque run, page « Modèles » du dashboard). Le second modèle est `qwen/qwen3.5-9b` **en build GGUF**, chargé comme le premier avec un contexte de 4 096 tokens et un seul emplacement de prédiction, et évalué sur les trois mêmes variantes et le **jeu complet**. | Build MLX du même modèle ; échantillon stratifié pour le second modèle | Consigne « comparaison de modèles ». Le build GGUF et non MLX : les deux formats s'exécutent sur des moteurs d'inférence différents (`llama.cpp` contre `mlx-llm`), et comparer les latences de deux modèles servis par deux moteurs mesurerait le moteur autant que le modèle. Le build MLX de cette famille ignore par ailleurs la longueur de contexte demandée, son ajustement automatique la réécrivant vers ce que la mémoire permet [VÉRIFIÉ : 32 768 obtenus pour 4 096 demandés], ce qui interdit d'aligner les deux modèles. Les 16 Go ne permettent qu'un modèle chargé à la fois, d'où deux campagnes successives. Le jeu complet plutôt qu'un échantillon : une comparaison appariée question par question exige que les deux modèles voient les mêmes questions. |
+| **ADR-15** | **Trois modèles**, un par grand éditeur : `google/gemma-4-12b-qat`, `qwen/qwen3.5-9b`, `mistralai/ministral-3-8b` (variante *Instruct*). Tous en **build GGUF**, chargés à l'identique — contexte 4 096, un seul emplacement de prédiction — et évalués sur les trois mêmes variantes et le **jeu complet**. | Un seul modèle ; builds MLX ; échantillon stratifié pour les modèles secondaires ; variante *Reasoning* de Ministral | Consigne « comparaison de modèles ». Trois éditeurs (États-Unis, Chine, Europe) donnent un axe de comparaison défendable, là où trois modèles du même fournisseur n'auraient mesuré qu'une gamme. Le GGUF et non le MLX : les deux formats s'exécutent sur des moteurs différents (`llama.cpp` contre `mlx-llm`), et comparer les latences de modèles servis par deux moteurs mesurerait le moteur autant que le modèle ; le build MLX de la famille `qwen3_5` réécrit de surcroît la longueur de contexte demandée [VÉRIFIÉ : 32 768 obtenus pour 4 096 demandés]. La variante *Instruct* de Ministral et non la *Reasoning* : l'éditeur publie les deux comme des modèles distincts, si bien que le modèle évalué ne contient aucune chaîne de pensée — il n'y a rien à désactiver, donc rien qui puisse se réactiver silencieusement si un template de chat change. Les 16 Go ne permettent qu'un modèle chargé à la fois, d'où trois campagnes successives. Le jeu complet plutôt qu'un échantillon : une comparaison appariée question par question exige que les modèles voient les mêmes questions. |
 
 ---
 
@@ -1060,7 +1072,17 @@ Développés et testés sur fixtures (TDD) : `ids`, `normalize`, `shuffle`, `gra
 
 1. `make check` puis `uv run trivia bench --variant v1_letter` (le plus rapide, ≈ 25 min) ; contrôle qualité sur le Parquet : taux non parsable, distribution des grades, temps médian.
 2. Enchaîner `v2_fewshot` puis `v3_json` (`make bench-all`).
-4. Second modèle (ADR-15) : `make unload-model`, puis `make load-model MODEL=qwen/qwen3.5-9b`, `make check MODEL=qwen/qwen3.5-9b`, puis les trois mêmes variantes sur le jeu complet (`scripts/bench_all.sh --model qwen/qwen3.5-9b`). Vérifier avant de lancer que `trivia check` annonce bien un moteur `llama.cpp` et un contexte de 4 096 : un build MLX serait servi par un autre moteur et refuserait cette longueur de contexte.
+4. Modèles suivants (ADR-15), un à la fois faute de mémoire pour deux. Pour chaque clé `M` parmi `qwen/qwen3.5-9b` et `mistralai/ministral-3-8b` :
+
+   ```
+   make unload-model && make load-model MODEL=M
+   uv run trivia check --model M
+   scripts/bench_all.sh --model M
+   ```
+
+   Le contrôle **« Format et contexte servis »** de `trivia check` conditionne le lancement : il échoue si LM Studio a réécrit la longueur de contexte demandée, ou si le modèle chargé n'est pas un GGUF. Dans les deux cas, le modèle ne serait pas comparable aux autres et les cinq heures de run seraient perdues.
+
+   Si deux variantes de format du même modèle sont téléchargées, `lms load` retient la première correspondance — MLX sur Apple Silicon — et n'offre aucune option pour choisir. Écarter le dossier de la variante MLX de `~/.lmstudio/models/` est alors le seul moyen scriptable de charger le GGUF.
 5. `uv run trivia grade --all` ; commit des JSONL bruts, manifestes et partitions silver.
 
 ### Phase 5 — Couche gold (dbt)

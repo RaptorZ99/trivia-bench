@@ -15,13 +15,19 @@ architecture médaillon et un rapport interactif.
 
 ## Ce que mesure ce benchmark
 
-La même question de culture générale est posée de **trois façons différentes** à **deux modèles
-exécutés localement**. On mesure ce que chaque formulation change — taux de bonnes réponses,
-respect du format de sortie, temps de réponse — et ce qui distingue les deux modèles à
-formulation égale.
+La même question de culture générale est posée de **trois façons différentes** à **trois modèles
+exécutés localement**, un par grand éditeur. On mesure ce que chaque formulation change — taux de
+bonnes réponses, respect du format de sortie, temps de réponse — et ce qui distingue les modèles
+à formulation égale.
 
-Les deux modèles sont chargés dans la même configuration, servis par le même moteur d'inférence
-et interrogés par le même endpoint : les écarts observés viennent des modèles, pas du montage.
+| Modèle | Éditeur | Paramètres | Taille |
+|---|---|---|---|
+| `google/gemma-4-12b-qat` | Google · États-Unis | 12 B | 7,15 Go |
+| `qwen/qwen3.5-9b` | Alibaba · Chine | 9 B | 6,55 Go |
+| `mistralai/ministral-3-8b` | Mistral · France | 8 B | 6,06 Go |
+
+Les trois sont chargés dans la même configuration, servis par le même moteur d'inférence et
+interrogés selon la même règle : les écarts observés viennent des modèles, pas du montage.
 
 <!-- RESULTATS -->
 
@@ -272,14 +278,18 @@ LMSTUDIO_MODEL_KEY=google/gemma-4-12b-qat
 
 ```bash
 export PATH="$HOME/.lmstudio/bin:$PATH"        # à ajouter dans ~/.zshrc
-lms get google/gemma-4-12b-qat                 # ~7 Go
-lms get qwen/qwen3.5-9b --gguf                 # ~6,5 Go, second modèle
+lms get google/gemma-4-12b-qat --gguf          # ~7,2 Go
+lms get qwen/qwen3.5-9b --gguf                 # ~6,5 Go
+lms get mistralai/ministral-3-8b --gguf        # ~6,1 Go
 make load-model                                # démarre le serveur et charge le modèle
 ```
 
 Le `--gguf` n'est pas un détail : LM Studio sert les modèles GGUF par `llama.cpp` et les modèles
-MLX par `mlx-llm`. Deux moteurs différents rendraient les latences des deux modèles
-incomparables, et le build MLX de cette famille ignore la longueur de contexte demandée.
+MLX par `mlx-llm`. Deux moteurs différents rendraient les latences incomparables entre modèles, et
+le build MLX de la famille Qwen 3.5 ignore la longueur de contexte demandée.
+
+Pour Ministral, prendre la variante **Instruct** et non la *Reasoning* : l'éditeur les publie
+comme deux modèles distincts, et celle retenue ne contient aucune chaîne de pensée.
 
 `make load-model` charge le modèle avec un contexte de 4 096 tokens et **un seul emplacement de
 prédiction**, condition d'une mesure de latence propre. La cible accepte un autre modèle :
