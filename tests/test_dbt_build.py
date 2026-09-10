@@ -44,9 +44,7 @@ def _questions() -> list[dict[str, object]]:
                     ["Aglio", "Cipolla", "Peperoncino"] if qtype == "multiple" else ["True"]
                 ),
                 options=(
-                    ["Aglio", "Pomodoro", "Cipolla", "Peperoncino"]
-                    if qtype == "multiple"
-                    else None
+                    ["Aglio", "Pomodoro", "Cipolla", "Peperoncino"] if qtype == "multiple" else None
                 ),
             ).model_dump()
         )
@@ -129,9 +127,9 @@ def gold(tmp_path_factory: pytest.TempPathFactory) -> Path:
     (silver / "answers").mkdir(parents=True)
 
     pl.DataFrame(_questions(), schema=SILVER_SCHEMA).write_parquet(silver / "questions.parquet")
-    pl.DataFrame([_run_row(run, variant) for run, variant, _ in RUNS], schema=RUNS_SCHEMA).write_parquet(
-        silver / "runs.parquet"
-    )
+    pl.DataFrame(
+        [_run_row(run, variant) for run, variant, _ in RUNS], schema=RUNS_SCHEMA
+    ).write_parquet(silver / "runs.parquet")
     for run_id, variant, correctness in RUNS:
         partition = silver / "answers" / f"run_id={run_id}"
         partition.mkdir()

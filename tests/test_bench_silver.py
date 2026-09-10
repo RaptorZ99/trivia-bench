@@ -56,11 +56,20 @@ def paths(tmp_path: Path, questions: list[Question]) -> DataPaths:
         # Reponse conforme et juste.
         {"question_id": "1" * 64, "content": "B", "response_time": 0.21, "run_order": 0},
         # Reponse juste mais hors format.
-        {"question_id": "2" * 64, "content": "False, he was Austrian.", "response_time": 0.42,
-         "run_order": 1},
+        {
+            "question_id": "2" * 64,
+            "content": "False, he was Austrian.",
+            "response_time": 0.42,
+            "run_order": 1,
+        },
         # Appel en echec.
-        {"question_id": "3" * 64, "content": "", "response_time": 12.0, "run_order": 2,
-         "error": "TimeoutError: boom"},
+        {
+            "question_id": "3" * 64,
+            "content": "",
+            "response_time": 12.0,
+            "run_order": 2,
+            "error": "TimeoutError: boom",
+        },
     ]
     with data_paths.run_jsonl(RUN_ID).open("w", encoding="utf-8") as handle:
         for record in records:
