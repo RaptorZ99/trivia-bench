@@ -1,13 +1,16 @@
 """Variantes de prompt evaluees par le benchmark (SPEC.md section 8.2).
 
-Les quatre variantes posent la meme question avec les memes options, dans le meme ordre :
-seule change la maniere d'obtenir le format de reponse attendu.
+Les trois variantes posent la meme question avec les memes options, dans le meme ordre :
+seule change la maniere d'obtenir le format de reponse attendu. Toutes attendent une reponse
+courte — une lettre en choix multiples, le mot lui-meme en vrai/faux.
 
 - `v1_letter` : consigne nue, « repondre par la lettre uniquement » ;
-- `v2_simple_evals` : cadrage systeme et contrat de sortie explicite, convention du harnais
-  OpenAI simple-evals, sans la clause de raisonnement pas a pas ;
-- `v3_fewshot` : demonstration du format par deux exemples resolus ;
-- `v4_json` : decodage contraint par schema JSON, format garanti par construction.
+- `v2_fewshot` : demonstration du format par deux exemples resolus ;
+- `v3_json` : decodage contraint par schema JSON, format garanti par construction.
+
+Une variante « contrat de sortie » (convention du harnais OpenAI simple-evals) a ete evaluee
+puis ecartee : elle fait deliberer le modele en prose avant la lettre finale, ce qui expose la
+reponse au budget de tokens sans rien apprendre sur sa connaissance (voir ADR-14).
 
 Les gabarits sont des fichiers texte versionnes (`prompts/*.txt`) : leur empreinte est
 enregistree avec chaque reponse, ce qui rend la formulation du prompt tracable.
@@ -38,7 +41,7 @@ def _template(name: str) -> str:
 
 
 def _json_schema(question_type: QuestionType) -> dict[str, Any]:
-    """Schema de sortie structuree pour la variante `v4_json`."""
+    """Schema de sortie structuree pour la variante `v3_json`."""
     values = list(LETTERS) if question_type == "multiple" else ["True", "False"]
     return {
         "type": "object",
@@ -91,20 +94,8 @@ PROMPT_VARIANTS: dict[str, PromptVariant] = {
             order=1,
         ),
         PromptVariant(
-            id="v2_simple_evals",
-            label="V2 · Contrat de sortie",
-            description=(
-                "Prompt systeme de cadrage et contrat de sortie explicite se terminant par "
-                "'Answer: X', convention du harnais OpenAI simple-evals."
-            ),
-            max_tokens={"multiple": 64, "boolean": 64},
-            has_system=True,
-            answer_cue=True,
-            order=2,
-        ),
-        PromptVariant(
-            id="v3_fewshot",
-            label="V3 · Few-shot",
+            id="v2_fewshot",
+            label="V2 · Few-shot",
             description=(
                 "Deux exemples resolus avant la question cible : le format est demontre plutot "
                 "qu'explique. Les exemples sont fixes et exclus du jeu evalue."
@@ -112,11 +103,11 @@ PROMPT_VARIANTS: dict[str, PromptVariant] = {
             max_tokens={"multiple": 8, "boolean": 8},
             use_fewshot=True,
             answer_cue=True,
-            order=3,
+            order=2,
         ),
         PromptVariant(
-            id="v4_json",
-            label="V4 · JSON contraint",
+            id="v3_json",
+            label="V3 · JSON contraint",
             description=(
                 "Sortie contrainte par un schema JSON : le format est garanti par le decodage, "
                 "ce qui isole l'effet de la contrainte sur l'exactitude."
@@ -124,7 +115,7 @@ PROMPT_VARIANTS: dict[str, PromptVariant] = {
             max_tokens={"multiple": 24, "boolean": 24},
             has_system=True,
             structured=True,
-            order=4,
+            order=3,
         ),
     )
 }

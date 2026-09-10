@@ -33,6 +33,19 @@ Signatures lues sur Streamlit 1.63.0 installé (`inspect.signature`) :
 - `ai_correct` est retenu **non nul** (définition des consignes) ; la nuance « non parsable » est portée par la colonne `grade` et par `accuracy_parsed_only` en gold.
 - Les fonctions DuckDB `jaro_winkler_similarity` et `levenshtein` existent bien en 1.5.5 mais ne sont pas utilisées : la notation est faite une seule fois en Python.
 
+## Divergence assumee : le nombre de variantes de prompt
+
+Le rapport `06_benchmark_methodology.md` propose **cinq** variantes (V1 a V5). Le projet en retient
+**trois** : `v1_letter`, `v2_fewshot`, `v3_json`. Ce n'est pas une erreur du rapport mais une
+decision prise apres mesure, consignee dans l'ADR-14 de la spec.
+
+- La variante en **texte libre sans options** a ete ecartee avant campagne : juger automatiquement
+  du texte libre comporte une erreur irreductible qui aurait rendu son resultat contestable.
+- La variante **« contrat de sortie »** (style simple-evals, `Answer: $LETTER` en derniere ligne) a
+  ete lancee puis arretee apres 132 reponses : le modele delibere en prose sur 33 tokens de mediane
+  malgre la consigne inverse du prompt systeme, et 10,5 % des reponses etaient tronquees avant
+  d'atteindre la lettre. Son score aurait mesure le budget de tokens, pas la formulation.
+
 ## 01_opentdb.md et 03_dbt_duckdb.md
 
 Aucune correction. Note : `opentdb.com` est bloqué sur le réseau d'entreprise (Cato Networks, catégorie « Games ») ; le rapport 01 a été produit via un proxy de lecture, ses chiffres sont cohérents entre endpoints.

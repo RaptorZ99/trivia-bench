@@ -25,7 +25,8 @@ from trivia_bench.models import LETTERS, Grade, Question
 
 # Une lettre en tete de reponse : « B », « B) », « (b) », « B. Pomodoro ».
 _LETTER_ANCHORED = re.compile(r"^\s*\(?([A-Da-d])\)?(?:[.):\-\s]|$)")
-# Convention du harnais OpenAI simple-evals.
+# Marqueur « Answer: X », que le modele produit spontanement ou en reponse a un gabarit
+# qui se termine par « Answer: » (convention du harnais OpenAI simple-evals).
 _ANSWER_CUE = re.compile(r"(?i)\banswer\s*(?::|is)\s*\$?\**\s*\(?([A-Da-d])\)?\b")
 _ANSWER_CUE_TEXT = re.compile(r"(?i)answer\s*:\s*\**\s*([A-Za-z]+)")
 # Une lettre isolee en fin de reponse courte.
@@ -136,6 +137,7 @@ def _match_option_text(
     *,
     threshold: float,
     margin: float,
+    allow_contains: bool,
 ) -> tuple[int, Grade, float | None] | None:
     """Rapproche une reponse en toutes lettres d'une des options proposees."""
     normalized = normalize_answer(answer)
@@ -158,6 +160,12 @@ def _match_option_text(
         runner_up = scores[1][1] if len(scores) > 1 else 0.0
         if scores[0][1] - runner_up >= margin:
             return scores[0][0], "fuzzy", float(scores[0][1])
+
+    # Le rapprochement par sous-chaine est la seule regle dont la suite manquante d'une
+    # reponse tronquee peut inverser le verdict : « The character Daryl Dixon does not have a »
+    # cite l'option juste avant de la nier, et la negation tombe hors du texte recu.
+    if not allow_contains:
+        return None
 
     contained = [
         index
@@ -226,14 +234,18 @@ def grade_answer(
     structured: bool = False,
     answer_cue: bool = False,
     error: str | None = None,
+    truncated: bool = False,
     fuzzy_threshold: float = 90.0,
     fuzzy_margin: float = 5.0,
 ) -> GradeResult:
     """Note une reponse du modele.
 
-    Les quatre variantes affichent les options : la reponse attendue est une lettre en choix
+    Les trois variantes affichent les options : la reponse attendue est une lettre en choix
     multiples, le mot lui-meme en vrai/faux. `structured` active la lecture prealable du JSON,
-    `answer_cue` la recherche du marqueur « Answer: » utilise par V2 et V3.
+    `answer_cue` la recherche du marqueur « Answer: », utile quand le gabarit se termine par lui.
+
+    `truncated` signale une reponse coupee par le budget de tokens : le rapprochement par
+    sous-chaine y est desactive, faute de pouvoir lire la suite qui la contredirait.
     """
     if error:
         return GradeResult("error", False)
@@ -269,7 +281,11 @@ def grade_answer(
             candidate = from_json
 
     matched = _match_option_text(
-        candidate, question.options, threshold=fuzzy_threshold, margin=fuzzy_margin
+        candidate,
+        question.options,
+        threshold=fuzzy_threshold,
+        margin=fuzzy_margin,
+        allow_contains=not truncated,
     )
     if matched is not None:
         index, grade, score = matched

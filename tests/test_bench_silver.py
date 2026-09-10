@@ -144,6 +144,45 @@ def test_error_row_keeps_its_message(graded: pl.DataFrame) -> None:
     assert row["ai_correct"] is False
 
 
+def test_retry_after_error_replaces_the_failed_call(paths: DataPaths, settings: Settings) -> None:
+    """Une reprise re-interroge les questions en erreur : le grain reste (run, question).
+
+    Le JSONL est ecrit en ajout, la question porte donc deux lignes. Garder les deux
+    violerait la cle de la couche silver et ferait echouer le test d'unicite dbt.
+    """
+    with paths.run_jsonl(RUN_ID).open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "run_id": RUN_ID,
+                    "question_id": "3" * 64,
+                    "prompt_variant": "v1_letter",
+                    "prompt_version": "test",
+                    "prompt_sha256": "abc",
+                    "transport": "native",
+                    "reasoning_mode": "off",
+                    "content": "B",
+                    "prompt_tokens": 70,
+                    "completion_tokens": 2,
+                    "reasoning_tokens": 0,
+                    "max_tokens": 8,
+                    "response_time": 0.3,
+                    "run_order": 2,
+                    "attempt": 1,
+                    "called_at": datetime.now(UTC).isoformat(),
+                    "error": None,
+                }
+            )
+            + "\n"
+        )
+
+    graded = grade_run(RUN_ID, settings=settings, paths=paths)
+    assert graded.height == 3
+    assert graded["question_id"].n_unique() == 3
+    row = graded.filter(pl.col("question_id") == "3" * 64).row(0, named=True)
+    assert (row["grade"], row["ai_correct"], row["error"]) == ("letter", True, None)
+
+
 def test_metadata_is_carried_over(graded: pl.DataFrame) -> None:
     row = graded.row(0, named=True)
     assert row["run_id"] == RUN_ID

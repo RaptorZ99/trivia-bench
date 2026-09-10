@@ -15,7 +15,7 @@ architecture médaillon et un rapport interactif.
 
 ## Ce que mesure ce benchmark
 
-La même question de culture générale est posée au modèle de **quatre façons différentes**. On
+La même question de culture générale est posée au modèle de **trois façons différentes**. On
 mesure ce que chaque formulation change : le taux de bonnes réponses, la capacité du modèle à
 respecter un format de sortie, et le temps de réponse.
 
@@ -47,7 +47,7 @@ LM Studio ──bench──▶  bronze : une ligne JSON par appel au modèle
 |---|---|---|---|
 | **Bronze** | CSV, JSONL | Questions brutes de l'API, réponses HTTP, réponses du modèle telles quelles, manifestes de run | Conserver la donnée sans interprétation : on peut toujours revenir à la réponse exacte du modèle, mot pour mot |
 | **Silver** | Parquet (zstd) | Questions nettoyées et typées, réponses notées partitionnées par run | Observations propres et exploitables, notation figée |
-| **Gold** | DuckDB | 15 tables métier + 3 vues de préparation, construites par dbt | Répondre directement à une question métier, sans jointure supplémentaire |
+| **Gold** | DuckDB | 17 tables métier + 3 vues de préparation, construites par dbt | Répondre directement à une question métier, sans jointure supplémentaire |
 
 Les réponses sont **partitionnées par run** (`data/silver/answers/run_id=…/part-0.parquet`) :
 chaque run écrit un fichier immuable plutôt que de réécrire un fichier commun, ce qui rend la
@@ -64,7 +64,7 @@ src/trivia_bench/     # package Python : scrape, clean, bench, build
   └── prompts/        # gabarits de prompt versionnés (fichiers texte)
 dbt/                  # projet dbt : sources, staging, marts, macros, tests
 app/                  # dashboard Streamlit (lib/ + views/)
-tests/                # 188 tests : unitaires, intégration, build dbt de bout en bout
+tests/                # 189 tests : unitaires, intégration, build dbt de bout en bout
 data/                 # bronze / silver / gold, versionnés dans le dépôt
 docs/research/        # rapports de documentation ayant fondé la spécification
 ```
@@ -104,10 +104,10 @@ applicative, c'est le champ `response_code` qui fait foi.
   même présentation, et la bonne réponse n'est pas systématiquement en première position. Le
   biais de position des modèles en questions à choix multiples est documenté ; il reste mesurable
   dans la table `mart_position_bias`.
-- **Exemples few-shot réservés** : quatre questions servent d'exemples dans la variante V4 et
+- **Exemples few-shot réservés** : quatre questions servent d'exemples dans la variante V2 et
   sont exclues de l'évaluation.
 
-### 3. Les quatre variantes de prompt
+### 3. Les trois variantes de prompt
 
 Les gabarits sont des fichiers texte versionnés dans `src/trivia_bench/prompts/`, et l'empreinte
 du prompt effectivement envoyé est enregistrée avec chaque réponse.
@@ -115,11 +115,19 @@ du prompt effectivement envoyé est enregistrée avec chaque réponse.
 | Variante | Ce qu'elle isole | Sortie attendue |
 |---|---|---|
 | **V1 · Lettre seule** | Conformité de format sur instruction nue, avec options | `B` |
-| **V2 · Contrat de sortie** | Cadrage système et contrat explicite (convention OpenAI simple-evals) | `… Answer: B` |
-| **V3 · Few-shot** | Démonstration du format par deux exemples résolus | `B` |
-| **V4 · JSON contraint** | Format garanti par le décodage lui-même | `{"answer": "B"}` |
+| **V2 · Few-shot** | Démonstration du format par deux exemples résolus | `B` |
+| **V3 · JSON contraint** | Format garanti par le décodage lui-même | `{"answer": "B"}` |
 
-Chaque variante existe en version choix multiples et en version vrai/faux.
+Chaque variante existe en version choix multiples et en version vrai/faux. Les trois attendent une
+**réponse courte** : une lettre en choix multiples, le mot lui-même en vrai/faux.
+
+Une quatrième variante a été essayée puis écartée, et la raison mérite d'être connue. Elle suivait
+la convention du harnais OpenAI *simple-evals* : un prompt système demandant de ne jamais expliquer,
+et un contrat imposant `Answer: $LETTER` en dernière ligne. Le modèle a désobéi au prompt système et
+délibéré en prose — 33 tokens de médiane — avant de donner sa lettre. Avec un budget de 64 tokens,
+**10,5 % des réponses étaient coupées avant d'atteindre la lettre**, l'une d'elles s'arrêtant
+littéralement sur le mot « Answer ». Son score aurait mesuré notre budget de tokens plutôt que sa
+formulation, et l'aurait rendue incomparable aux trois autres.
 
 ### 4. Conditions d'exécution
 
@@ -266,7 +274,7 @@ un run complet dure environ une heure par variante.
 | `make clean-data` | Bronze → `silver/questions.parquet` | quelques secondes |
 | `make check` | Vérifications LM Studio | 10 s |
 | `make bench VARIANT=v1_letter` | Une variante sur tout le jeu | ~1 h |
-| `make bench-all` | Les quatre variantes | ~4 h |
+| `make bench-all` | Les trois variantes | ~3 h 30 |
 | `make grade` | Renote tous les runs | quelques secondes |
 | `make build` | Couche gold avec dbt | < 1 min |
 | `make docs` | Documentation dbt statique | quelques secondes |
@@ -278,10 +286,10 @@ Toutes les commandes sont aussi accessibles directement :
 ```bash
 uv run trivia --help
 uv run trivia scrape [--categories 9,10] [--fresh]
-uv run trivia bench --variant v2_simple_evals [--sample stratified:400]
+uv run trivia bench --variant v3_json [--sample stratified:400]
 uv run trivia bench --variant v1_letter --resume <run_id>     # reprise après interruption
 uv run trivia grade --all [--force]
-uv run trivia prompt --variant v3_fewshot                     # affiche un prompt rendu
+uv run trivia prompt --variant v2_fewshot                     # affiche un prompt rendu
 ```
 
 ### Reprise et renotation
@@ -326,7 +334,7 @@ les pages.
 
 ## Couche gold
 
-15 tables métier construites par dbt, chacune répondant à une question précise :
+17 tables métier construites par dbt, chacune répondant à une question précise :
 
 | Table | Grain | Question métier |
 |---|---|---|
@@ -341,7 +349,9 @@ les pages.
 | `mart_position_bias` | (run, lettre) | Biais de position |
 | `mart_latency_by_run` | (run, type) | Distribution des temps de réponse |
 | `mart_latency_drift` | (run, tranche) | Dérive du débit au fil du run |
-| `mart_variant_pairwise` | paire de variantes | Table de contingence appariée |
+| `mart_variant_pairwise` | paire de variantes | Table de contingence appariée entre deux formulations |
+| `mart_model_pairwise` | paire de modèles | Table de contingence appariée entre deux modèles |
+| `mart_reasoning_pairwise` | paire de modes | Contingence avec et sans raisonnement — vide ici, l'axe ayant été abandonné (ADR-05) |
 | `mart_question_consistency` | question | Questions ratées par toutes les variantes |
 | `mart_answer_length` | (run, exactitude) | Longueur de réponse et exactitude |
 
@@ -368,7 +378,7 @@ relatifs par rapport au répertoire courant.
 make all      # ruff check + ruff format --check + mypy strict + pytest
 ```
 
-188 tests couvrent la table de vérité de la notation (plus de 80 cas), le rendu des prompts, les
+189 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
 deux clients HTTP simulés, la construction de la couche silver, et un `dbt build` complet sur des
 fixtures. La CI GitHub Actions rejoue l'ensemble sans accès réseau ni LM Studio.
 

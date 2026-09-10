@@ -26,7 +26,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ ${#VARIANTS[@]} -eq 0 ]; then
-  VARIANTS=(v1_letter v3_fewshot v4_json v2_simple_evals)
+  VARIANTS=(v1_letter v2_fewshot v3_json)
 fi
 
 args=(--reasoning "$REASONING")

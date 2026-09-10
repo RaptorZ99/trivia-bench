@@ -1,3 +1,0 @@
-Answer the following True/False question. The last line of your response should be of the following format: 'Answer: $WORD' (without quotes) where WORD is True or False.
-
-{question}

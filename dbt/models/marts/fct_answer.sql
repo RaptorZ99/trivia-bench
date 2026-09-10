@@ -47,9 +47,9 @@ select
     a.completion_tokens,
     a.reasoning_tokens,
     a.max_tokens,
-    -- L'endpoint natif ne renvoie pas de `finish_reason` : la troncature se deduit du
-    -- budget de tokens atteint. Elle ne concerne que des reponses deja hors format.
-    (a.max_tokens > 0 and a.completion_tokens >= a.max_tokens) as is_truncated,
+    -- Calculee lors de la notation, qui s'en sert pour refuser le rapprochement par
+    -- sous-chaine sur une reponse coupee : la regle vit donc en Python, pas ici.
+    a.is_truncated,
     length(a.ai_answer)                          as answer_chars,
     a.finish_reason,
     a.run_order,

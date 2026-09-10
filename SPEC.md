@@ -101,7 +101,7 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **ADR-11** | Streamlit ≥ 1.63 avec `st.navigation` et des pages-fonctions ; accès DuckDB par **connexions courtes** en lecture seule dans des fonctions `st.cache_data` ; thème clair + sombre dans `.streamlit/config.toml` ; Plotly 6.9 (`<7`) avec `theme="streamlit"`. | Connexion en `st.cache_resource` ; Altair | Une connexion DuckDB gardée ouverte par Streamlit **bloque `dbt build`** (verrou tenu tant que la connexion vit) [DOC, testé]. Plotly 7.0 (25 août 2026) n'apporte rien au projet et casse quelques API. |
 | **ADR-12** | Les données sont **versionnées dans git** (bronze, silver, gold) pour un livrable auto-porteur, avec un budget de 60 Mo ; au-delà, Git LFS. Les prompts rendus ne sont pas stockés ligne à ligne (seulement leur hash), ils sont régénérables. | Données hors git | Les correcteurs doivent pouvoir lancer le dashboard sans relancer 4 h de benchmark. |
 | **ADR-13** | Logs avec loguru ; tests avec pytest + pytest-httpx ; lint et format avec ruff ; typage mypy strict sur `src/` ; hooks pre-commit ; CI GitHub Actions (lint, tests, `dbt build` sur fixtures). | stdlib logging, black + flake8 | Moins de configuration, un seul outil de lint [DOC]. |
-| **ADR-14** | Quatre variantes de prompt (V1 lettre seule, V2 contrat de sortie, V3 few-shot, V4 JSON contraint), chacune déclinée pour les questions booléennes. Toutes affichent les options : seule change la manière d'obtenir le format de réponse. | Une seule variante ; une cinquième variante en texte libre, sans options affichées | C'est l'axe d'analyse mis en avant par les consignes, et chaque variante isole un mécanisme (instruction nue, cadrage système, démonstration par l'exemple, contrainte grammaticale). Une variante en texte libre a été écartée : sa notation automatique comporte une erreur irréductible qui aurait rendu son résultat contestable, alors que les quatre retenues se notent sans ambiguïté sur un espace de réponses de deux ou quatre valeurs. |
+| **ADR-14** | Trois variantes de prompt (V1 lettre seule, V2 few-shot, V3 JSON contraint), chacune déclinée pour les questions booléennes. Toutes affichent les options, attendent une réponse courte, et seule change la manière d'obtenir le format. | Une variante en texte libre sans options affichées ; une variante « contrat de sortie » (convention OpenAI simple-evals) | Chaque variante retenue isole un mécanisme : instruction nue, démonstration par l'exemple, contrainte grammaticale. Deux ont été écartées après mesure. La variante en texte libre exigeait de juger du texte libre, avec une erreur de notation irréductible. La variante « contrat de sortie » demandait la réponse en dernière ligne (`Answer: $LETTER`) : le modèle délibère alors en prose sur 33 tokens de médiane malgré la consigne inverse du prompt système, et 10,5 % des réponses étaient coupées par le budget de tokens avant d'atteindre la lettre — son score aurait reflété notre budget plutôt que sa formulation. |
 | **ADR-15** | Le mode de comparaison multi-modèles est prévu par construction (`model_key` dans chaque run, page « Modèles » du dashboard) ; un second modèle plus petit est lancé en fin de projet si le temps le permet (question ouverte Q2). | — | Consigne « comparaison de modèles » ; 16 Go ne permettent qu'un modèle chargé à la fois. |
 
 ---
@@ -290,7 +290,7 @@ trivia-bench/
 | `make load-model` | `lms load google/gemma-4-12b-qat --context-length 4096 --gpu max --parallel 1 --identifier trivia-bench -y` | — | ≈ 30 s |
 | `make check` | `uv run trivia check` | LM Studio local | 10 s |
 | `make bench VARIANT=v1_letter` | `uv run trivia bench --variant v1_letter` | LM Studio local | 25 à 60 min par variante |
-| `make bench-all` | boucle sur les 5 variantes | LM Studio local | ≈ 4 h |
+| `make bench-all` | boucle sur les 3 variantes | LM Studio local | ≈ 3 h 30 |
 | `make grade` | `uv run trivia grade` | — | secondes |
 | `make build` | `uv run trivia build` (= `dbt build --project-dir dbt --profiles-dir dbt --target prod`) | — | < 1 min |
 | `make docs` | `dbt docs generate --static` | — | secondes |
@@ -367,7 +367,7 @@ Types Polars pour silver, types DuckDB pour gold. Toutes les dates sont en UTC.
 | `run_id` | str | Identifiant du run |
 | `run_order` | int | Ordre d'exécution dans le run (0 = premier appel mesuré ; l'appel de chauffe n'est pas dans ce fichier) |
 | `question_id` | str | sha256 hex |
-| `prompt_variant` | str | `v1_letter`… `v4_json` |
+| `prompt_variant` | str | `v1_letter`, `v2_fewshot`, `v3_json` |
 | `prompt_version` | str | contenu de `prompts/VERSION` |
 | `prompt_sha256` | str | hash du prompt rendu (system + user) |
 | `transport` | str | `native` ou `openai` |
@@ -414,7 +414,7 @@ Contraintes de validation (pydantic + tests) : `correct_answer ∉ incorrect_ans
 | `question_id` | `String` | |
 | `model_key` | `String` | `google/gemma-4-12b-qat` |
 | `model_quant` | `String` | `Q4_0` |
-| `prompt_variant` | `Enum` | `v1_letter`, `v2_simple_evals`, `v3_fewshot`, `v4_json` |
+| `prompt_variant` | `Enum` | `v1_letter`, `v2_fewshot`, `v3_json` |
 | `prompt_version` | `String` | |
 | `reasoning_mode` | `Enum["off","on"]` | |
 | `transport` | `Enum["native","openai"]` | |
@@ -422,7 +422,7 @@ Contraintes de validation (pydantic + tests) : `correct_answer ∉ incorrect_ans
 | `ai_answer` | `String` | texte brut renvoyé (`content`), peut être vide |
 | `ai_reasoning` | `String` (nullable) | texte de raisonnement si `reasoning_mode = on` |
 | `predicted_letter` | `String` (nullable) | lettre extraite (QCM) |
-| `predicted_text` | `String` (nullable) | réponse normalisée/extraite (texte libre, booléen) |
+| `predicted_text` | `String` (nullable) | texte de l'option retenue (QCM) ou mot reconnu (booléen) |
 | `ai_correct` | `Boolean` (non nul) | `True` si la réponse correspond à la bonne réponse ; `False` sinon, y compris `unparseable` et `error` |
 | `grade` | `Enum` | `letter`, `exact`, `fuzzy`, `contains`, `wrong`, `unparseable`, `error` (section 9) |
 | `grade_score` | `Float32` (nullable) | score rapidfuzz quand `grade = fuzzy` |
@@ -589,7 +589,7 @@ Une classe `LMStudioClient(base_url, model_key, timeout)` avec :
 
 Réponse exploitée : `output[]` (éléments `type: "message"` → `content` ; `type: "reasoning"` → `ai_reasoning`), `stats.input_tokens`, `stats.total_output_tokens`, `stats.reasoning_output_tokens`, `stats.tokens_per_second`, `stats.time_to_first_token_seconds`, `model_instance_id`. Les paramètres `top_k`, `min_p` et `repeat_penalty` sont acceptés (HTTP 200) ; l'endpoint renvoie HTTP 400 `unrecognized_keys` pour toute clé inconnue, ce qui protège contre les fautes de frappe [VÉRIFIÉ, annexe A].
 
-**Transport OpenAI-compatible** (`POST /v1/chat/completions`) — utilisé pour V5 [VÉRIFIÉ] :
+**Transport OpenAI-compatible** (`POST /v1/chat/completions`) — utilisé pour V4 [VÉRIFIÉ] :
 
 ```json
 {
@@ -612,18 +612,17 @@ Réponse exploitée : `choices[0].message.content`, `choices[0].message.reasonin
 
 ### 8.2 Variantes de prompt (`bench/prompts.py`, `prompts/*.txt`) — ADR-14
 
-Registre `PROMPT_VARIANTS: dict[str, PromptVariant]` avec, pour chaque variante : `id`, `label`, `system` (par type de question, optionnel), `user_template` (par type), `max_tokens`, `json_schema` (V5 uniquement), `parser` (stratégie de notation, section 9), `description` (affichée dans le dashboard). Les templates vivent dans des fichiers texte versionnés ; `prompts/VERSION` (`2026-09-10.1`) est recopié dans chaque enregistrement. Rendu par `str.format` avec des placeholders `{question}`, `{A}`…`{D}`, `{examples}`.
+Registre `PROMPT_VARIANTS: dict[str, PromptVariant]` avec, pour chaque variante : `id`, `label`, `system` (par type de question, optionnel), `user_template` (par type), `max_tokens` (par type), `json_schema` (V4 uniquement), les drapeaux `has_system`, `use_fewshot`, `structured` et `answer_cue` qui pilotent le rendu et la notation, `order` et `description` (affichée dans le dashboard). Les templates vivent dans des fichiers texte versionnés ; `prompts/VERSION` (`2026-09-10.1`) est recopié dans chaque enregistrement. Rendu par `str.format` avec des placeholders `{question}`, `{A}`…`{D}`, `{examples}`.
 
 Le prompt système est envoyé comme vrai tour `system` : Gemma 4 le supporte nativement et le template de chat embarqué dans le GGUF (« Google Gemma 4 Canonical Chat Template », publié le 2026-07-09) est appliqué par LM Studio [VÉRIFIÉ, `prediction_config.promptTemplate` observé].
 
 | ID | Système | Template utilisateur (QCM) | Template utilisateur (booléen) | `max_tokens` | Ce que la variante isole |
 |---|---|---|---|---|---|
 | `v1_letter` | aucun | `Question: {question}\n\nA) {A}\nB) {B}\nC) {C}\nD) {D}\n\nAnswer with the letter only (A, B, C, or D). Do not explain.` | `Statement: {question}\n\nIs this statement True or False?\n\nAnswer with one word only: True or False.` | 8 | conformité de format sur instruction nue + reconnaissance |
-| `v2_simple_evals` | `You are a rigorous trivia quiz solver. Answer strictly according to the requested format and never add explanations unless explicitly asked.` | `Answer the following multiple choice question. The last line of your response should be of the following format: 'Answer: $LETTER' (without quotes) where LETTER is one of ABCD.\n\n{question}\n\nA) {A}\nB) {B}\nC) {C}\nD) {D}` | `Answer the following True/False question. The last line of your response should be of the following format: 'Answer: $WORD' (without quotes) where WORD is True or False.\n\n{question}` | 64 | cadrage système + contrat de sortie (convention OpenAI simple-evals, sans « think step by step ») |
-| `v3_fewshot` | aucun | `Answer each multiple choice question with only the letter of the correct answer.\n\n{examples}\n\nQuestion: {question}\nA) {A}\nB) {B}\nC) {C}\nD) {D}\nAnswer:` où `{examples}` = 2 blocs `Question/A–D/Answer: X` fixes | `Answer each statement with only True or False.\n\n{examples}\n\nStatement: {question}\nAnswer:` | 8 | démonstration du format en contexte |
-| `v4_json` | `You answer trivia questions. Respond only with a single JSON object matching the given schema. Do not include any text outside the JSON object.` | `Question: {question}\n\nA) {A}\nB) {B}\nC) {C}\nD) {D}` avec schéma `{"answer": enum[A,B,C,D]}` | `Statement: {question}` avec schéma `{"answer": enum[True,False]}` | 24 | décodage contraint par grammaire : format garanti, effet sur l'exactitude |
+| `v2_fewshot` | aucun | `Answer each multiple choice question with only the letter of the correct answer.\n\n{examples}\n\nQuestion: {question}\nA) {A}\nB) {B}\nC) {C}\nD) {D}\nAnswer:` où `{examples}` = 2 blocs `Question/A–D/Answer: X` fixes | `Answer each statement with only True or False.\n\n{examples}\n\nStatement: {question}\nAnswer:` | 8 | démonstration du format en contexte |
+| `v3_json` | `You answer trivia questions. Respond only with a single JSON object matching the given schema. Do not include any text outside the JSON object.` | `Question: {question}\n\nA) {A}\nB) {B}\nC) {C}\nD) {D}` avec schéma `{"answer": enum[A,B,C,D]}` | `Statement: {question}` avec schéma `{"answer": enum[True,False]}` | 24 | décodage contraint par grammaire : format garanti, effet sur l'exactitude |
 
-Les templates ci-dessus sont normatifs (annexe B les reproduit verbatim avec les échappements). Variante optionnelle `v2_simple_evals` + `reasoning_mode = on` (`max_tokens` 1024) sur échantillon stratifié (ADR-05).
+Les templates ci-dessus sont normatifs (annexe B les reproduit verbatim avec les échappements).
 
 ### 8.3 Boucle d'exécution (`bench/runner.py`)
 
@@ -645,7 +644,7 @@ manifest.finished_at, n_done, n_errors, status → réécriture du manifeste
 - Exécution strictement séquentielle (ADR-06). Aucune parallélisation, même via asyncio.
 - Barre de progression rich avec ETA, taux d'erreurs, dernier temps de réponse.
 - Interruption (`Ctrl+C`) propre : le manifeste passe en `partial`, reprise avec `--resume`.
-- Estimations [VÉRIFIÉ sur une dizaine d'appels] : 0,21 à 0,5 s par question pour une réponse d'un ou deux tokens (V2 à V5) → 5 294 questions ≈ 20 à 45 min par variante ; V1 produit des phrases (≈ 19 tokens, 1,2 s observée pour « Who painted the Mona Lisa? ») → ≈ 1 h 45 ; total ≈ 4 à 5 h pour les 5 variantes.
+- Durées mesurées en campagne sur les 5 257 questions évaluées : V1 · Lettre seule 0,751 s de temps médian, V2 · Few-shot 0,903 s, V3 · JSON contraint 1,371 s — le décodage contraint et le transport compatible OpenAI coûtent près du double d'une lettre générée librement. Compter environ 3 h 30 pour les trois variantes, hors interruptions.
 
 ### 8.4 Échantillonnage
 
@@ -659,9 +658,9 @@ manifest.finished_at, n_done, n_errors, status → réécriture du manifeste
 trivia check                                     # Phase 0 (section 14.4)
 trivia bench --variant v1_letter [--model google/gemma-4-12b-qat] [--reasoning off|on]
              [--limit N | --sample stratified:N] [--resume RUN_ID] [--max-tokens N]
-trivia bench --all-variants [--sample ...]       # boucle v1..v5, séquentiellement
+trivia bench --all-variants [--sample ...]       # boucle v1..v4, séquentiellement
 trivia grade [--run-id RUN_ID | --all] [--force] # bronze JSONL → silver answers + runs.parquet (idempotent)
-trivia prompt --variant v2_simple_evals --question-id <id>   # affiche le prompt rendu (debug/README)
+trivia prompt --variant v2_fewshot --question-id <id>        # affiche le prompt rendu (debug/README)
 ```
 
 `trivia grade` est séparé de `bench` pour pouvoir **re-noter** tous les runs si la logique de notation évolue (la notation est déterministe et rapide), sans réinterroger le modèle. `bench` appelle `grade` automatiquement en fin de run.
@@ -672,7 +671,7 @@ Collecté au démarrage : `run_id`, `model_key`, `model_display_name`, `model_qu
 
 ### 8.7 Tests
 
-`pytest-httpx` : les deux transports (corps de requête exact, parsing des stats, absence/présence de raisonnement, HTTP 400 → échec immédiat, 5xx → retries, timeout) ; garde-fou raisonnement ; rendu des 5 variantes × 2 types (snapshots texte) ; reprise (`--resume` ignore les IDs déjà présents) ; manifeste (champs obligatoires, sérialisation) ; conversion JSONL → Parquet.
+`pytest-httpx` : les deux transports (corps de requête exact, parsing des stats, absence/présence de raisonnement, HTTP 400 → échec immédiat, 5xx → retries, timeout) ; garde-fou raisonnement ; rendu des 3 variantes × 2 types (snapshots texte) ; reprise (`--resume` ignore les IDs déjà présents) ; manifeste (champs obligatoires, sérialisation) ; conversion JSONL → Parquet.
 
 ---
 
@@ -690,8 +689,8 @@ Objectif : décider `grade` et `ai_correct` de façon déterministe, testée, et
 |---|---|---|
 | `letter` | True | lettre extraite (regex ou JSON) égale à `correct_letter` |
 | `exact` | True | texte normalisé égal à la bonne réponse (ou au texte de l'option correcte) ; booléen : mot `true`/`false` exact |
-| `fuzzy` | True | similarité rapidfuzz ≥ 90 avec la bonne réponse, et écart ≥ 5 points avec la deuxième meilleure option (QCM) ; booléen : synonyme (`yes`/`no`/`t`/`f`/`y`/`n`) |
-| `contains` | True | bonne réponse (≥ 3 caractères) contenue dans la réponse, sans négation dans les 3 mots précédents ; QCM : une seule option contenue |
+| `fuzzy` | True | `fuzz.ratio` ≥ 90 avec le texte de l'option, et écart ≥ 5 points avec la deuxième meilleure (QCM) ; booléen : la réponse entière est un synonyme (`yes`/`no`/`y`/`n`/`t`/`f`/`correct`/`incorrect`) |
+| `contains` | True | bonne réponse (≥ 3 caractères) contenue dans la réponse, une seule option citée, sans négation dans les 2 mots précédents, et réponse non tronquée (section 9.5) |
 | `wrong` | False | une réponse a été identifiée, elle est fausse |
 | `unparseable` | False | aucune réponse identifiable (vide, refus, hors format) |
 | `error` | False | appel échoué après retries |
@@ -701,36 +700,55 @@ Objectif : décider `grade` et `ai_correct` de façon déterministe, testée, et
 ### 9.3 Arbre de décision
 
 ```
-grade(answer_text, question, variant):
+grade(answer_text, question, variante, tronquee):
   if error: return ("error", False)
 
-  # --- QCM (v2..v5) ---
-  if question.type == multiple:
-      letter = extract_letter(answer_text, is_json=variant == v4_json)
-      #   v5: json.loads → obj["answer"] ∈ {A,B,C,D}
-      #   sinon: regex ancrée ^\s*\(?([A-D])\)?(?:[.):\s]|$)   puis   (?i)answer\s*:\s*\$?([A-D])\b
-      #   puis lettre seule en fin de texte (?i)\b([A-D])\s*$ si le texte fait ≤ 3 mots
-      if letter: return ("letter", letter == correct_letter) if correct else ("wrong", False)
-      matched = match_option_text(answer_text, options)   # exact → fuzzy(≥90, marge ≥5) → contains(unique, sans négation)
-      if matched: return (method, matched.index == correct_index) …
-      return ("unparseable", False)
+  # --- Lecture prealable du JSON (v3_json) ---
+  # Avant l'aiguillage par type : sinon une reponse vrai/faux parfaitement conforme
+  # ({"answer": "False"}) serait notee par rapprochement au lieu d'etre reconnue exacte.
+  if variante.structured et json.loads(...)["answer"] existe:
+      answer_text = cette valeur
 
-  # --- Booléen (v2..v5) ---
+  # --- Vrai/faux ---
   if question.type == boolean:
-      token = (json answer si v5) sinon normalize(answer_text) ; si v3/v4, extraire d'abord après "answer:"
-      if token in {true, false}: exact
-      elif token in {yes, y, t} | {no, n, f}: fuzzy
-      elif exactement un des deux mots (true/false/yes/no) présent dans le texte: contains
-      else unparseable
+      si variante.answer_cue : extraire ce qui suit "answer:"
+      token = normalize(answer_text)
+      if token vide: unparseable
+      if token in {true} | {false}: exact
+      elif token in {yes, y, t, correct} | {no, n, f, incorrect}: fuzzy   # la reponse entiere
+      elif exactement un mot parmi {true,yes,correct} / {false,no,incorrect}: contains
+      else: unparseable
 
+  # --- Choix multiples ---
+  letter = extract_letter(answer_text, structured=variante.structured)
+  #   structure : json.loads → obj["answer"] ∈ {A,B,C,D}
+  #   puis regex ancree      ^\s*\(?([A-Da-d])\)?(?:[.):\-\s]|$)
+  #   puis marqueur          (?i)\banswer\s*(?::|is)\s*\$?\**\s*\(?([A-Da-d])\)?\b
+  #   puis lettre isolee en fin de texte, si celui-ci fait ≤ 3 mots
+  if letter: return ("letter", letter == correct_letter) si juste, sinon ("wrong", False)
 
+  matched = match_option_text(answer_text, options, contains_autorise = not tronquee)
+  #   exact → fuzzy(ratio ≥ 90, marge ≥ 5 avec la 2e option) → contains(unique, sans negation)
+  if matched: return (methode, matched.index == correct_index) …
+
+  # Le refus n'est cherche qu'ici, en dernier : une reponse hesitante mais juste
+  # (« je ne suis pas sur, mais False ») doit etre creditee.
+  return ("unparseable", False)
 ```
 
-Garde anti-négation : tokens `not`, `n't`, `never`, `except`, `neither`, `isn't`, `wasn't`, `aren't` dans les 3 mots précédant le segment apparié. Refus : `i don't know`, `unknown`, `n/a`, `cannot`, `no idea` (liste dans le code, testée).
+Garde anti-négation : `not`, `n't`, `never`, `except`, `neither`, `nor`, `isn`, `wasn`, `aren`, `no` dans les **2 mots** précédant le segment apparié.
+
+Refus : deux listes distinctes, car les confondre produit des faux positifs. Une liste d'**égalités exactes** (`n/a`, `unknown`, `none`, `no answer`, `not sure`, `no comment`) — testée en sous-chaîne, « n a » ferait passer « born in austria » pour un refus. Une liste de **locutions** cherchées en sous-chaîne (`i don't know`, `cannot answer`, `no idea`, `unable to`, `impossible to say`…). Le refus est évalué **en dernier**, après avoir cherché une réponse.
+
+### 9.5 Réponses tronquées
+
+Le budget de tokens de chaque variante peut couper une réponse. Une réponse coupée est une preuve incomplète : la suite manquante peut contredire ce qui a été reçu. Le rapprochement par **sous-chaîne** est donc désactivé sur une réponse tronquée — c'est la seule règle dont le verdict puisse être renversé par la suite du texte, comme l'a montré « The character Daryl Dixon does not have a », qui créditait Dixon alors que la négation tombait hors du texte reçu.
+
+Les autres règles restent actives : une lettre ancrée en tête, une égalité exacte ou un rapprochement approché ne peuvent pas être inversés par la suite du texte. La troncature est calculée là où elle sert, au moment de la notation (`completion_tokens >= max_tokens`), et transmise à la couche gold dans `is_truncated` plutôt que recalculée en SQL.
 
 ### 9.4 Tests (table de vérité)
 
-Au moins 60 cas paramétrés couvrant : `"B"`, `"B)"`, `"(b)"`, `"B. Pomodoro"`, `"Answer: B"`, `"The answer is B"`, `"Pomodoro"`, `"pomodoro."`, `"It's Pomodoro"`, `"Not Aglio, Pomodoro"`, `"Aglio"` (wrong), `"I don't know"` (unparseable), `""`, `"True"`, `"true."`, `"Yes"`, `"False, it was Austria"`, `"Neither true nor false"` (unparseable), JSON valide/invalide, réponses avec accents et entités HTML, cas V1 avec réponse longue contenant la bonne réponse, cas V1 contenant la bonne réponse niée. Chaque cas fixe `grade` **et** `ai_correct`.
+70 cas paramétrés couvrant : `"B"`, `"B)"`, `"(b)"`, `"B. Pomodoro"`, `"Answer: B"`, `"The answer is B"`, `"Pomodoro"`, `"pomodoro."`, `"It's Pomodoro"`, `"Not Aglio, Pomodoro"`, `"Aglio"` (wrong), `"I don't know"` (unparseable), `""`, `"True"`, `"true."`, `"Yes"`, `"False, it was Austria"`, `"Neither true nor false"` (unparseable), JSON valide/invalide, réponses avec accents et entités HTML, bonne réponse citée puis niée, et réponses tronquées (sous-chaîne refusée, lettre et exact conservés). Chaque cas fixe `grade` **et** `ai_correct`.
 
 ---
 
@@ -974,7 +992,7 @@ Déclenchée sur push et pull request : `astral-sh/setup-uv` → `uv sync --lock
 1. **Titre, badges** (CI, Python 3.12, licence), capture du dashboard.
 2. **Résumé du benchmark** : chiffres clés (précision par variante avec IC, temps médian), en 5 lignes.
 3. **Architecture** : schéma médaillon, arborescence, rôle de chaque couche, formats (CSV, Parquet, DuckDB).
-4. **Méthodologie** : source OpenTDB (licence CC BY-SA 4.0, 5 298 questions verified, catégories), identifiants et mélange déterministe, les 5 variantes de prompt (tableau + lien vers les templates), paramètres de génération (glouton, raisonnement désactivé et pourquoi), notation (`grade`, `ai_correct`), statistiques (Wilson, McNemar, bootstrap, baseline du hasard, seuil `n < 30`), mesure du temps (wall-clock, TTFT, warm-up, séquentiel).
+4. **Méthodologie** : source OpenTDB (licence CC BY-SA 4.0, 5 298 questions verified, catégories), identifiants et mélange déterministe, les 3 variantes de prompt (tableau + lien vers les templates), paramètres de génération (glouton, raisonnement désactivé et pourquoi), notation (`grade`, `ai_correct`), statistiques (Wilson, McNemar, bootstrap, baseline du hasard, seuil `n < 30`), mesure du temps (wall-clock, TTFT, warm-up, séquentiel).
 5. **Pourquoi l'API REST de LM Studio et non le SDK Python** : résumé de l'annexe A.
 6. **Setup complet** : prérequis (macOS Apple Silicon 16 Go, LM Studio ≥ 0.4.24, `uv`), installation (`uv sync`), `.env`, téléchargement du modèle (`lms get google/gemma-4-12b-qat`), chargement (`make load-model`), contrainte réseau pour le scraping, ordre des commandes, durées attendues.
 7. **Utilisation** : chaque commande `trivia …` avec ses options, cibles Make, reprise après interruption, re-notation.
@@ -1017,7 +1035,7 @@ Développés et testés sur fixtures (TDD) : `ids`, `normalize`, `shuffle`, `gra
 ### Phase 4 — Runs de benchmark (≈ 4 h de machine, reprenables)
 
 1. `make check` puis `uv run trivia bench --variant v1_letter` (le plus rapide, ≈ 25 min) ; contrôle qualité sur le Parquet : taux non parsable, distribution des grades, temps médian.
-2. Enchaîner `v3_fewshot`, `v4_json`, `v2_simple_evals` (`make bench-all`).
+2. Enchaîner `v2_fewshot` puis `v3_json` (`make bench-all`).
 4. Optionnel (ADR-15) : second modèle (question Q2), mêmes variantes sur l'échantillon stratifié.
 5. `uv run trivia grade --all` ; commit des JSONL bruts, manifestes et partitions silver.
 
@@ -1116,7 +1134,7 @@ Le SDK 1.5.0 expose `LlmPredictionConfig` avec les champs `temperature`, `max_to
 
 ### Annexe B — Templates de prompt (verbatim)
 
-Fichiers `src/trivia_bench/prompts/<variant>.<type>.txt`. Le contenu exact est celui de la table de la section 8.2 ; les sauts de ligne `\n` y sont réels. Le prompt système, quand il existe, est dans `<variant>.system.txt`. Les exemples few-shot (V4) sont rendus à partir de `fewshot_examples.json` avec les options mélangées de la couche silver, sous la forme :
+Fichiers `src/trivia_bench/prompts/<variant>.<type>.txt`. Le contenu exact est celui de la table de la section 8.2 ; les sauts de ligne `\n` y sont réels. Le prompt système, quand il existe, est dans `<variant>.system.txt`. Les exemples few-shot (V3) sont rendus à partir de `fewshot_examples.json` avec les options mélangées de la couche silver, sous la forme :
 
 ```
 Question: <question>
@@ -1134,13 +1152,13 @@ Statement: <question>
 Answer: <True|False>
 ```
 
-Schéma JSON (V5, QCM) :
+Schéma JSON (V4, QCM) :
 
 ```json
 {"type":"object","properties":{"answer":{"type":"string","enum":["A","B","C","D"]}},"required":["answer"],"additionalProperties":false}
 ```
 
-Schéma JSON (V5, booléen) : idem avec `"enum":["True","False"]`.
+Schéma JSON (V4, booléen) : idem avec `"enum":["True","False"]`.
 
 ### Annexe C — Paramètres de génération de référence
 

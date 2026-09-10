@@ -24,7 +24,7 @@ from trivia_bench.config import Settings
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNS = [
     ("run_a", "v1_letter", [True, True, False, True]),
-    ("run_b", "v2_simple_evals", [True, False, False, True]),
+    ("run_b", "v2_fewshot", [True, False, False, True]),
 ]
 
 

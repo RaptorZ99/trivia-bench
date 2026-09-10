@@ -52,6 +52,7 @@ ANSWERS_SCHEMA: dict[str, pl.DataType] = {
     "completion_tokens": pl.Int32(),
     "reasoning_tokens": pl.Int32(),
     "max_tokens": pl.Int32(),
+    "is_truncated": pl.Boolean(),
     "finish_reason": pl.String(),
     "run_order": pl.Int32(),
     "attempt": pl.Int8(),
@@ -107,13 +108,23 @@ def _load_questions_index(path: Path) -> dict[str, Question]:
 
 
 def _iter_records(path: Path) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
+    """Derniere reponse retenue pour chaque question du run.
+
+    Une reprise re-interroge les questions restees en erreur : le JSONL, ecrit en ajout,
+    contient alors deux lignes pour la meme question. La couche silver a pour grain
+    (run_id, question_id) — garder les deux violerait cette cle. La derniere ligne fait foi,
+    c'est la tentative la plus recente ; la position de la premiere est conservee pour que
+    l'ordre du fichier reste celui du run.
+    """
+    latest: dict[str, dict[str, Any]] = {}
     with path.open(encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
-            if line:
-                records.append(json.loads(line))
-    return records
+            if not line:
+                continue
+            record = json.loads(line)
+            latest[str(record["question_id"])] = record
+    return list(latest.values())
 
 
 def grade_run(
@@ -141,12 +152,20 @@ def grade_run(
             n_missing += 1
             continue
 
+        # L'endpoint natif ne renvoie pas de `finish_reason` : la troncature se deduit du
+        # budget de tokens atteint. Elle est calculee ici parce qu'elle pese sur la notation,
+        # et transmise telle quelle a la couche gold plutot que recalculee en SQL.
+        max_tokens = int(record.get("max_tokens") or 0)
+        completion_tokens = int(record.get("completion_tokens") or 0)
+        is_truncated = max_tokens > 0 and completion_tokens >= max_tokens
+
         result = grade_answer(
             str(record.get("content") or ""),
             question,
             structured=variant.structured,
             answer_cue=variant.answer_cue,
             error=record.get("error"),
+            truncated=is_truncated,
             fuzzy_threshold=settings.fuzzy_threshold,
             fuzzy_margin=settings.fuzzy_margin,
         )
@@ -173,9 +192,10 @@ def grade_run(
                 "ttft_s": record.get("ttft_s"),
                 "tokens_per_second": record.get("tokens_per_second"),
                 "prompt_tokens": int(record.get("prompt_tokens") or 0),
-                "completion_tokens": int(record.get("completion_tokens") or 0),
+                "completion_tokens": completion_tokens,
                 "reasoning_tokens": int(record.get("reasoning_tokens") or 0),
-                "max_tokens": int(record.get("max_tokens") or 0),
+                "max_tokens": max_tokens,
+                "is_truncated": is_truncated,
                 "finish_reason": record.get("finish_reason"),
                 "run_order": int(record.get("run_order") or 0),
                 "attempt": int(record.get("attempt") or 1),

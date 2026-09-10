@@ -75,6 +75,26 @@ def test_letter_is_preferred_over_option_text(mc_question: Question) -> None:
     assert (result.grade, result.predicted_letter) == ("wrong", "A")
 
 
+# --- Reponses coupees par le budget de tokens ---
+
+
+def test_truncated_answer_is_not_credited_by_substring(mc_question: Question) -> None:
+    """Une reponse coupee peut citer l'option juste avant de la nier : refus de crediter.
+
+    Cas mesure en campagne : « The character Daryl Dixon does not have a » creditait Dixon,
+    la negation tombant hors du texte recu.
+    """
+    result = grade_answer("The dish Pomodoro does not", mc_question, truncated=True)
+    assert (result.grade, result.ai_correct) == ("unparseable", False)
+
+
+def test_truncated_answer_keeps_unambiguous_grades(mc_question: Question) -> None:
+    """La restriction ne vise que la sous-chaine : lettre, exact et approche restent valides."""
+    for answer, grade in (("B", "letter"), ("Pomodoro", "exact"), ("Pomodorro", "fuzzy")):
+        result = grade_answer(answer, mc_question, truncated=True)
+        assert (result.grade, result.ai_correct) == (grade, True), answer
+
+
 # --- Variante JSON contrainte ---
 
 

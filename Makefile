@@ -45,7 +45,7 @@ unload-model:  ## Decharge le modele
 bench:  ## Lance une variante (make bench VARIANT=v1_letter)
 	uv run trivia bench --variant $(VARIANT)
 
-bench-all:  ## Lance les 5 variantes
+bench-all:  ## Lance les 4 variantes
 	uv run trivia bench --all-variants
 
 grade:  ## Note tous les runs (bronze -> silver answers)

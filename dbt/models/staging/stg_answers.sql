@@ -23,6 +23,7 @@ select
     completion_tokens::integer as completion_tokens,
     reasoning_tokens::integer as reasoning_tokens,
     max_tokens::integer       as max_tokens,
+    is_truncated::boolean     as is_truncated,
     finish_reason,
     run_order::integer        as run_order,
     attempt::tinyint          as attempt,
