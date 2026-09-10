@@ -64,7 +64,7 @@ src/trivia_bench/     # package Python : scrape, clean, bench, build
   └── prompts/        # gabarits de prompt versionnés (fichiers texte)
 dbt/                  # projet dbt : sources, staging, marts, macros, tests
 app/                  # dashboard Streamlit (lib/ + views/)
-tests/                # 189 tests : unitaires, intégration, build dbt de bout en bout
+tests/                # 188 tests : unitaires, intégration, build dbt de bout en bout
 data/                 # bronze / silver / gold, versionnés dans le dépôt
 docs/research/        # rapports de documentation ayant fondé la spécification
 ```
@@ -324,11 +324,12 @@ make dashboard
 | **Thèmes et difficulté** | Sur quels domaines le modèle réussit-il ou échoue-t-il ? |
 | **Temps de réponse** | Que coûte chaque formulation, et le débit dérive-t-il ? |
 | **Explorateur de questions** | Que répond exactement le modèle, question par question ? |
-| **Comparaison de modèles** | Qu'est-ce qui distingue deux modèles, ou deux modes de raisonnement ? |
+| **Comparaison de modèles** | Qu'est-ce qui distingue deux modèles, à formulation égale ? |
 | **Méthodologie** | Comment les chiffres sont-ils obtenus, et que ne disent-ils pas ? |
 
-Les filtres de la barre latérale (modèle, mode de raisonnement, variantes) s'appliquent à toutes
-les pages.
+Les filtres de la barre latérale s'appliquent à toutes les pages. Ils n'apparaissent que
+lorsqu'ils ont quelque chose à filtrer : le sélecteur de modèle reste caché tant qu'un seul
+modèle est publié, et celui du mode de raisonnement tant qu'aucun run ne l'active.
 
 ---
 
@@ -355,7 +356,7 @@ les pages.
 | `mart_question_consistency` | question | Questions ratées par toutes les variantes |
 | `mart_answer_length` | (run, exactitude) | Longueur de réponse et exactitude |
 
-32 tests de données accompagnent ces modèles : clés uniques, valeurs autorisées, intégrité
+33 tests de données accompagnent ces modèles : clés uniques, valeurs autorisées, intégrité
 référentielle, cohérence des comptages, et des invariants du protocole (aucun token de
 raisonnement quand il est désactivé, aucune question few-shot évaluée).
 
@@ -378,7 +379,7 @@ relatifs par rapport au répertoire courant.
 make all      # ruff check + ruff format --check + mypy strict + pytest
 ```
 
-189 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
+188 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
 deux clients HTTP simulés, la construction de la couche silver, et un `dbt build` complet sur des
 fixtures. La CI GitHub Actions rejoue l'ensemble sans accès réseau ni LM Studio.
 
@@ -407,9 +408,13 @@ fixtures. La CI GitHub Actions rejoue l'ensemble sans accès réseau ni LM Studi
   thermique est mesurée dans le dashboard.
 - **Reproductibilité** : même en décodage glouton, l'arithmétique flottante sur GPU ne garantit
   pas des sorties strictement identiques d'une exécution à l'autre.
-- **Notation automatique** : le rapprochement approché et la règle de réponse contenue peuvent
-  produire de rares faux positifs. Le mode de reconnaissance est conservé pour chaque réponse,
-  ce qui permet de les auditer.
+- **Notation automatique** : le mode de reconnaissance est conservé pour chaque réponse, ce qui
+  a permis d'auditer **tous** les cas concernés plutôt qu'un échantillon. Les trois variantes
+  attendant une réponse courte, les reconnaissances approchées sont marginales : 3 sur 12 106
+  réponses, toutes sur des réponses tronquées. Deux étaient de faux positifs — une option citée
+  puis niée après la coupure — et ont conduit à interdire le rapprochement par sous-chaîne sur
+  une réponse tronquée. Les 71 réponses jugées inexploitables ont également été relues et sont
+  correctement classées : ce sont des refus explicites de choisir une option.
 
 ---
 

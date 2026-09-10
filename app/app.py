@@ -43,26 +43,34 @@ def sidebar_filters() -> queries.Selection | None:
         st.subheader("Filtres", divider="gray")
 
         available_models = sorted(runs["model_short"].unique().to_list())
-        selected_models = st.multiselect(
-            "Modeles",
-            options=available_models,
-            default=available_models,
-            placeholder="Choisir un ou plusieurs modeles",
-            help="Modeles a inclure dans toutes les analyses.",
-        )
+        if len(available_models) > 1:
+            selected_models = st.multiselect(
+                "Modeles",
+                options=available_models,
+                default=available_models,
+                placeholder="Choisir un ou plusieurs modeles",
+                help="Modeles a inclure dans toutes les analyses.",
+            )
+        else:
+            selected_models = available_models
 
+        # Un filtre a une seule valeur ne filtre rien : il n'est propose que si les runs
+        # publies couvrent bien les deux modes. La campagne les desactive tous (ADR-05).
         available_reasoning = sorted(runs["reasoning_mode"].unique().to_list())
-        selected_reasoning = st.pills(
-            "Raisonnement",
-            options=available_reasoning,
-            default=available_reasoning,
-            selection_mode="multi",
-            format_func=lambda value: "active" if value == "on" else "desactive",
-            help=(
-                "Gemma 4 raisonne par defaut. Le benchmark principal desactive ce mode : "
-                "il multiplie le temps de reponse sans changer la nature de la tache."
-            ),
-        )
+        if len(available_reasoning) > 1:
+            selected_reasoning = st.pills(
+                "Raisonnement",
+                options=available_reasoning,
+                default=available_reasoning,
+                selection_mode="multi",
+                format_func=lambda value: "active" if value == "on" else "desactive",
+                help=(
+                    "Le benchmark desactive le raisonnement : il multiplie le temps de "
+                    "reponse sans changer la nature de la tache."
+                ),
+            )
+        else:
+            selected_reasoning = available_reasoning
 
         # Le libelle vient du manifeste de run, pas d'une table dupliquee cote dashboard.
         labels = dict(

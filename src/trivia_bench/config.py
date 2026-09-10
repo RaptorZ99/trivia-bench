@@ -56,7 +56,6 @@ class Settings(BaseSettings):
 
     # --- Echantillonnage / reproductibilite ---
     sample_seed: int = 20260910
-    generation_seed: int = 42
 
 
 def get_settings() -> Settings:

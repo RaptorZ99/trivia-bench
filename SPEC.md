@@ -102,7 +102,7 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **ADR-12** | Les données sont **versionnées dans git** (bronze, silver, gold) pour un livrable auto-porteur, avec un budget de 60 Mo ; au-delà, Git LFS. Les prompts rendus ne sont pas stockés ligne à ligne (seulement leur hash), ils sont régénérables. | Données hors git | Les correcteurs doivent pouvoir lancer le dashboard sans relancer 4 h de benchmark. |
 | **ADR-13** | Logs avec loguru ; tests avec pytest + pytest-httpx ; lint et format avec ruff ; typage mypy strict sur `src/` ; hooks pre-commit ; CI GitHub Actions (lint, tests, `dbt build` sur fixtures). | stdlib logging, black + flake8 | Moins de configuration, un seul outil de lint [DOC]. |
 | **ADR-14** | Trois variantes de prompt (V1 lettre seule, V2 few-shot, V3 JSON contraint), chacune déclinée pour les questions booléennes. Toutes affichent les options, attendent une réponse courte, et seule change la manière d'obtenir le format. | Une variante en texte libre sans options affichées ; une variante « contrat de sortie » (convention OpenAI simple-evals) | Chaque variante retenue isole un mécanisme : instruction nue, démonstration par l'exemple, contrainte grammaticale. Deux ont été écartées après mesure. La variante en texte libre exigeait de juger du texte libre, avec une erreur de notation irréductible. La variante « contrat de sortie » demandait la réponse en dernière ligne (`Answer: $LETTER`) : le modèle délibère alors en prose sur 33 tokens de médiane malgré la consigne inverse du prompt système, et 10,5 % des réponses étaient coupées par le budget de tokens avant d'atteindre la lettre — son score aurait reflété notre budget plutôt que sa formulation. |
-| **ADR-15** | Le mode de comparaison multi-modèles est prévu par construction (`model_key` dans chaque run, page « Modèles » du dashboard) ; un second modèle plus petit est lancé en fin de projet si le temps le permet (question ouverte Q2). | — | Consigne « comparaison de modèles » ; 16 Go ne permettent qu'un modèle chargé à la fois. |
+| **ADR-15** | Comparaison multi-modèles prévue par construction (`model_key` dans chaque run, page « Modèles » du dashboard). Un second modèle, `qwen/qwen3.5-9b`, est évalué sur les trois mêmes variantes et le **jeu complet**, pas sur un échantillon. | Échantillon stratifié pour le second modèle | Consigne « comparaison de modèles ». Les 16 Go ne permettent qu'un modèle chargé à la fois, d'où deux campagnes successives plutôt que simultanées. Le jeu complet plutôt qu'un échantillon : une comparaison appariée question par question exige que les deux modèles voient les mêmes questions. |
 
 ---
 
@@ -183,26 +183,25 @@ trivia-bench/
 │   │   ├── prompts.py             # registre des variantes, rendu des templates, few-shot
 │   │   ├── grading.py             # arbre de décision de notation
 │   │   ├── manifest.py            # RunManifest: versions, config, hash dataset, git sha
+│   │   ├── dataset.py             # chargement des questions, échantillonnage, exemples few-shot
 │   │   ├── runner.py              # boucle séquentielle, warm-up, reprise, écriture JSONL
-│   │   └── silver.py              # JSONL bruts → answers/run_id=*/part-0.parquet + runs.parquet
+│   │   ├── silver.py              # JSONL bruts → answers/run_id=*/part-0.parquet + runs.parquet
+│   │   ├── check.py               # vérifications LM Studio de la phase 0
+│   │   └── preview.py             # rendu d'un prompt pour le débogage
 │   ├── build/
 │   │   ├── __init__.py
 │   │   └── dbt.py                 # invocation dbtRunner + garde-fou verrou DuckDB
 │   └── prompts/                   # templates versionnés (fichiers texte, un par variante et par type)
 │       ├── VERSION                # ex. 2026-09-10.1
-│       ├── v1_letter.multiple.txt
-│       ├── v1_letter.boolean.txt
-│       ├── v1_letter.multiple.txt
-│       ├── ...
-│       └── fewshot_examples.json  # question_ids des exemples few-shot fixes
+│       ├── v1_letter.{multiple,boolean}.txt
+│       ├── v2_fewshot.{multiple,boolean}.txt
+│       └── v3_json.{system,multiple,boolean}.txt
 ├── dbt/
 │   ├── dbt_project.yml
 │   ├── profiles.yml
-│   ├── packages.yml               # dbt_utils
 │   ├── macros/
 │   │   ├── generate_schema_name.sql
-│   │   ├── wilson_interval.sql
-│   │   └── chance_baseline.sql
+│   │   └── stats.sql              # wilson_lo, wilson_hi, chance_baseline
 │   ├── models/
 │   │   ├── staging/
 │   │   │   ├── sources.yml
@@ -224,11 +223,17 @@ trivia-bench/
 │   │       ├── mart_latency_by_run.sql
 │   │       ├── mart_latency_drift.sql
 │   │       ├── mart_variant_pairwise.sql
+│   │       ├── mart_model_pairwise.sql
+│   │       ├── mart_reasoning_pairwise.sql
 │   │       ├── mart_question_consistency.sql
 │   │       └── mart_answer_length.sql
-│   └── tests/
+│   └── tests/                     # tests singuliers
 │       ├── assert_accuracy_within_wilson.sql
-│       └── assert_counts_consistent.sql
+│       ├── assert_counts_are_consistent.sql
+│       ├── assert_one_answer_per_question.sql
+│       ├── assert_fewshot_examples_excluded.sql
+│       ├── assert_no_reasoning_when_disabled.sql
+│       └── assert_response_time_is_positive.sql
 ├── app/
 │   ├── app.py                     # point d'entrée Streamlit (navigation, thème, filtres globaux)
 │   ├── lib/
@@ -246,7 +251,6 @@ trivia-bench/
 │   │   ├── explorer.py
 │   │   ├── models.py
 │   │   └── methodology.py
-│   └── static/                    # logo, police éventuelle
 ├── data/
 │   ├── bronze/
 │   │   ├── questions_raw.csv
@@ -260,8 +264,7 @@ trivia-bench/
 │   └── gold/
 │       └── benchmark.duckdb
 ├── tests/
-│   ├── conftest.py
-│   ├── fixtures/                  # petits CSV/Parquet/JSONL de test
+│   ├── conftest.py                # fabriques de questions, réglages de test
 │   ├── test_ids.py
 │   ├── test_normalize.py
 │   ├── test_shuffle.py
@@ -271,7 +274,7 @@ trivia-bench/
 │   ├── test_prompts.py
 │   ├── test_grading.py
 │   ├── test_lmstudio_client.py
-│   ├── test_bench_runner.py
+│   ├── test_dataset.py
 │   ├── test_bench_silver.py
 │   └── test_dbt_build.py          # dbt build sur fixtures, vérifie les tables gold
 └── docs/
@@ -313,7 +316,6 @@ Versions vérifiées sur PyPI le 2026-09-10 [DOC]. Contraintes dans `pyproject.t
 | `duckdb` | 1.5.5 | lecture Parquet, backend dbt, dashboard |
 | `dbt-core` | 1.12.4 | couche gold |
 | `dbt-duckdb` | 1.11.0 | adaptateur |
-| `dbt_utils` (package dbt) | 1.4.x | tests génériques additionnels |
 | `pydantic` | 2.13.5 | modèles et validation |
 | `pydantic-settings` | 2.15.0 | configuration `.env` |
 | `typer` | 0.27.2 | CLI |
@@ -458,7 +460,9 @@ Grain et colonnes principales. Toutes les proportions sont accompagnées de `n`,
 | `mart_position_bias` | (run, correct_letter) et (run, predicted_letter) | `n`, `accuracy`, `share_predicted` | biais de position (QCM uniquement) |
 | `mart_latency_by_run` | (run, type) | `median`, `p90`, `p95`, `mean`, `stddev` de `response_time` ; médianes de `tokens_per_second`, `ttft_s`, `time_per_token`, `prompt_tokens`, `completion_tokens` | temps de réponse par variante et type |
 | `mart_latency_drift` | (run, bucket de 100 appels) | `bucket`, `median_response_time`, `median_tokens_per_second` | dérive thermique sur un run long |
-| `mart_variant_pairwise` | (model, reasoning, variant_a, variant_b) | `n`, `both_correct`, `a_only`, `b_only`, `both_wrong` | comparaison appariée (McNemar dans le dashboard) |
+| `mart_variant_pairwise` | (model, reasoning, variant_a, variant_b) | `n`, `both_correct`, `a_only`, `b_only`, `both_wrong` | comparaison appariée de deux formulations (McNemar dans le dashboard) |
+| `mart_model_pairwise` | (variant, reasoning, model_a, model_b) | idem | comparaison appariée de deux modèles, à formulation égale |
+| `mart_reasoning_pairwise` | (model, variant) | idem + `median_reasoning_tokens` | effet du raisonnement ; reste vide tant qu'aucun run ne l'active (ADR-05) |
 | `mart_question_consistency` | (model, question) | `n_runs`, `n_correct`, `all_correct`, `all_wrong`, `is_mixed` | questions toujours ratées (ambiguës ?) ou instables |
 | `mart_answer_length` | (run, ai_correct) | médiane/moyenne de `completion_tokens`, `answer_chars` | longueur vs exactitude |
 
@@ -535,7 +539,7 @@ Objectif : produire `data/silver/questions.parquet` à partir de `questions_raw.
 6. Casting : `type` et `difficulty` en `pl.Enum`, `category_id` en `Int16`.
 7. `options`, `correct_index`, `correct_letter` : mélange déterministe (section 7.2). Pour `boolean` : `options = ["True", "False"]`, `correct_index = 0 si correct_answer == "True" sinon 1`.
 8. `category_group`, `question_chars`, `question_words`.
-9. Sélection des exemples few-shot : les 2 premières questions `multiple` et les 2 premières `boolean` de la catégorie `General Knowledge` par `question_id` croissant, marquées `is_fewshot_example = True` ; leurs IDs sont écrits dans `src/trivia_bench/prompts/fewshot_examples.json` **s'il n'existe pas encore** (sinon le fichier existant fait foi, pour que les exemples restent stables entre reconstructions).
+9. Sélection des exemples few-shot : les 2 premières questions `multiple` et les 2 premières `boolean` de la catégorie `General Knowledge` par `question_id` croissant, marquées `is_fewshot_example = True`. La sélection est **dérivée du jeu de données**, pas persistée dans un fichier du package : elle est déterministe pour un jeu donné, et un fichier annexe se serait retrouvé réécrit par les tests.
 10. Écriture `write_parquet(compression="zstd")` + affichage d'un résumé (par catégorie, type, difficulté).
 
 ### 7.2 Mélange déterministe des options (ADR-08)
@@ -596,7 +600,7 @@ Réponse exploitée : `output[]` (éléments `type: "message"` → `content` ; `
   "model": "google/gemma-4-12b-qat",
   "messages": [{"role":"system","content":"..."},{"role":"user","content":"..."}],
   "reasoning_effort": "none",
-  "temperature": 0, "top_p": 1.0, "seed": 42,
+  "temperature": 0, "top_p": 1.0, "top_k": 1, "min_p": 0.0, "repeat_penalty": 1.0,
   "max_tokens": 24,
   "response_format": {"type":"json_schema","json_schema":{"name":"trivia_answer","strict":true,"schema":{...}}}
 }
@@ -606,7 +610,7 @@ Réponse exploitée : `choices[0].message.content`, `choices[0].message.reasonin
 
 **Garde-fou raisonnement** : si `reasoning_mode = off` et que la réponse contient des tokens de raisonnement (`reasoning_output_tokens > 0` ou `reasoning_tokens > 0`), le run s'arrête avec une erreur explicite (invariant du benchmark).
 
-**Erreurs et retries** : `httpx.HTTPError`, timeouts (60 s par appel, 180 s si raisonnement activé) et HTTP 5xx → jusqu'à 3 tentatives avec backoff (1 s, 2 s, 4 s). HTTP 4xx → erreur immédiate (bug de requête). Après échec définitif, l'enregistrement est écrit avec `error` renseigné et le run continue ; le résumé final liste les erreurs, et `trivia bench --resume` les rejoue.
+**Erreurs et retries** : `httpx.HTTPError`, timeouts (120 s par appel, 600 s si raisonnement activé) et HTTP 5xx → jusqu'à 3 tentatives avec backoff (1 s, 2 s, 4 s). HTTP 4xx → erreur immédiate (bug de requête). Après échec définitif, l'enregistrement est écrit avec `error` renseigné et le run continue ; le résumé final liste les erreurs, et `trivia bench --resume` les rejoue.
 
 **Mesure du temps** : `response_time = perf_counter()` autour de l'appel HTTP complet (inclut la sérialisation et le transport local, négligeables : ≈ 0,23 s mesurés pour une réponse de 2 tokens, dont 0,13 s de TTFT [VÉRIFIÉ]).
 
@@ -809,13 +813,17 @@ sources:
           external_location: "read_parquet('{{ env_var('TRIVIA_SILVER_DIR', 'data/silver') }}/answers/**/*.parquet', hive_partitioning = true)"
 ```
 
-Règles : `dbt` est toujours lancé **depuis la racine du dépôt** (chemins relatifs résolus par rapport au répertoire courant). `trivia build` fixe le répertoire courant, exporte les variables d'environnement, vérifie qu'aucun processus ne tient le fichier (`benchmark.duckdb`), puis appelle `dbtRunner().invoke(["build", "--project-dir", "dbt", "--profiles-dir", "dbt", "--target", "prod"])`. Le build écrit dans `data/gold/benchmark.build.duckdb` puis remplace atomiquement `benchmark.duckdb` (`os.replace`) : les lecteurs Streamlit déjà ouverts ne cassent pas, et un dashboard en cours d'utilisation ne bloque pas le build (ADR-11).
+Règles : `dbt` est toujours lancé **depuis la racine du dépôt** (chemins relatifs résolus par rapport au répertoire courant). `trivia build` fixe le répertoire courant, exporte les variables d'environnement, puis appelle `dbtRunner().invoke(["build", "--project-dir", "dbt", "--profiles-dir", "dbt", "--target", "prod"])`.
+
+Le build écrit dans `data/gold/.build/benchmark.duckdb` puis remplace atomiquement `data/gold/benchmark.duckdb` (`os.replace`) : les lecteurs Streamlit déjà ouverts ne cassent pas, et un dashboard en cours d'utilisation ne bloque pas le build (ADR-11). Deux détails d'implémentation valent d'être notés, chacun ayant coûté un bug :
+
+- le fichier temporaire porte le **même nom** dans un sous-dossier, et non `benchmark.build.duckdb` : dbt-duckdb dérive le nom du catalogue du nom de fichier, et le point cassait les références qualifiées stockées dans les vues (`Catalog "benchmark.build" does not exist`) ;
+- avant le remplacement, les connexions dbt sont fermées (`reset_adapters()`) puis un `CHECKPOINT` est forcé, et la publication est **refusée si la base construite est vide**. Sans cela, dbt gardant sa connexion ouverte, on déplaçait un fichier dont les tables n'étaient pas encore écrites — ce qui fonctionnait par accident tant que les lecteurs suivaient l'inode.
 
 ### 10.2 Macros
 
-- `wilson_interval(successes, trials, z=1.96)` → deux colonnes `wilson_lo`, `wilson_hi` (formule de Wilson en arithmétique pure, `nullif(trials, 0)`), utilisé via `cross join lateral`.
+- `wilson_lo(successes, trials, z=1.96)` et `wilson_hi(...)` → bornes de l'intervalle de Wilson en arithmétique pure (`nullif(trials, 0)`), appelées comme deux expressions de colonne. Deux macros plutôt qu'une seule renvoyant deux colonnes : DuckDB n'accepte pas de fonction table définie en Jinja.
 - `chance_baseline(type_col)` → `case when type = 'multiple' then 0.25 else 0.5 end` ; pour un groupe mixte : `avg(...)` pondéré par le nombre de questions.
-- `quantiles(col)` → `median`, `quantile_cont(col, 0.9)`, `quantile_cont(col, 0.95)`.
 
 ### 10.3 Modèles
 
@@ -827,18 +835,23 @@ Marts (tables), SQL DuckDB. Extraits normatifs :
 
 ```sql
 select
-    a.*,
-    q.category_id, q.category, q.category_group, q.type, q.difficulty,
-    q.correct_answer, q.correct_letter, q.n_options, q.question_chars,
-    r.model_display_name,
-    a.completion_tokens::double / nullif(a.response_time, 0) as tokens_per_second_wall,
+    a.run_id, a.question_id, a.model_key, r.model_short,
+    a.prompt_variant, r.variant_label, a.reasoning_mode, a.transport,
+    q.category, q.category_group, q.difficulty, q.type, q.n_options,
+    q.correct_letter, q.correct_answer, q.question,
+    a.ai_answer, a.predicted_letter, a.predicted_text, a.ai_correct, a.grade,
+    a.grade not in ('unparseable', 'error')      as is_parsed,
+    case when q.type = 'multiple' then 0.25 else 0.5 end as chance_baseline,
+    a.response_time, a.ttft_s, a.tokens_per_second,
     a.response_time / nullif(a.completion_tokens, 0) as time_per_token,
-    length(a.ai_answer) as answer_chars,
-    a.grade not in ('unparseable', 'error') as is_parsed
-from {{ ref('stg_answers') }} a
-join {{ ref('stg_questions') }} q using (question_id)
-join {{ ref('stg_runs') }} r using (run_id)
+    a.max_tokens, a.is_truncated,
+    length(a.ai_answer)                          as answer_chars
+from {{ ref('stg_answers') }} as a
+inner join {{ ref('stg_questions') }} as q using (question_id)
+inner join {{ ref('dim_run') }} as r using (run_id)
 ```
+
+Les colonnes sont énumérées plutôt que reprises par `a.*` : le dashboard s'appuie sur cette liste, et un `select *` y ferait entrer silencieusement toute colonne ajoutée en amont. La jointure porte sur `dim_run` et non sur `stg_runs`, pour hériter des libellés dérivés (`model_short`, `variant_label`) sans les recalculer. Le débit rapporté est celui du moteur (`tokens_per_second`, nul sur le transport compatible OpenAI) : un débit dérivé du temps de paroi mêlerait le coût du prompt à celui de la génération et serait trompeur sur des réponses de deux tokens.
 
 `mart_run_summary` (grain run) :
 
@@ -866,16 +879,17 @@ select agg.*,
        n_correct_parsed::double / nullif(n_parsed, 0) as accuracy_parsed_only,
        n_unparseable::double / n as unparseable_rate,
        n_correct::double / n - chance_baseline as accuracy_above_chance,
-       w.wilson_lo, w.wilson_hi
-from agg cross join lateral {{ wilson_interval('n_correct', 'n') }} as w
+       {{ wilson_lo('n_correct', 'n') }} as wilson_lo,
+       {{ wilson_hi('n_correct', 'n') }} as wilson_hi
+from agg
 ```
 
 Les autres marts suivent le même patron avec leur grain (section 5.3). `mart_variant_pairwise` fait une auto-jointure de `fct_answer` sur `question_id` pour deux runs de même modèle et même `reasoning_mode` (`variant_a < variant_b`) et compte les quatre cases de la table de contingence. `mart_latency_drift` utilise `floor(run_order / 100)`. `mart_position_bias` se limite à `type = 'multiple'` et croise `correct_letter` et `predicted_letter`.
 
 ### 10.4 Tests dbt
 
-- Génériques (`data_tests:`) : `unique` + `not_null` sur les clés (`question_id`, `run_id`, `(run_id, question_id)` via `dbt_utils.unique_combination_of_columns`) ; `accepted_values` sur `grade`, `type`, `difficulty`, `prompt_variant`, `reasoning_mode`, `transport` ; `dbt_utils.accepted_range` sur `accuracy` ∈ [0, 1] et `response_time` ≥ 0 ; `relationships` de `fct_answer.question_id` vers `dim_question`.
-- Singuliers : `assert_accuracy_within_wilson` (`wilson_lo ≤ accuracy ≤ wilson_hi`), `assert_counts_consistent` (`n_correct + n_wrong + n_unparseable + n_error = n`), `assert_no_reasoning_when_off` (`reasoning_tokens = 0` quand `reasoning_mode = 'off'`), `assert_fewshot_excluded` (aucune réponse sur une question `is_fewshot_example`).
+- Génériques (`data_tests:`) : `unique` + `not_null` sur `question_id` et `run_id` ; `accepted_values` sur `grade`, `type`, `difficulty`, `prompt_variant`, `reasoning_mode`, `transport`, `status` ; `not_null` sur les proportions ; `relationships` de `fct_answer.question_id` vers `dim_question`. Le projet n'installe **aucun package dbt** : les quelques tests que `dbt_utils` aurait apportés sont écrits en SQL dans `dbt/tests/`, ce qui évite une dépendance réseau au build pour trois requêtes.
+- Singuliers : `assert_accuracy_within_wilson` (`wilson_lo ≤ accuracy ≤ wilson_hi`), `assert_counts_are_consistent` (les modes de reconnaissance, les réponses fausses, inexploitables et en erreur couvrent le total), `assert_one_answer_per_question` (une seule ligne par couple `(run_id, question_id)` — l'invariant que casserait une reprise mal dédupliquée), `assert_no_reasoning_when_disabled` (`reasoning_tokens = 0` quand `reasoning_mode = 'off'`), `assert_response_time_is_positive`, `assert_fewshot_examples_excluded` (aucune réponse sur une question `is_fewshot_example`).
 - `dbt docs generate --static` → `dbt/target/static_index.html` publié dans `docs/` comme livrable complémentaire.
 
 ---
@@ -884,7 +898,7 @@ Les autres marts suivent le même patron avec leur grain (section 5.3). `mart_va
 
 ### 11.1 Principes
 
-- **Une histoire, six pages** : de la vue d'ensemble vers le détail, chaque page répond à une question métier et commence par une phrase de synthèse calculée à partir des données (ex. « La variante V3 obtient 71,2 % [69,9 ; 72,5] sur 5 294 questions »).
+- **Une histoire, sept pages** : de la vue d'ensemble vers le détail, chaque page répond à une question métier et commence par une phrase de synthèse calculée à partir des données (ex. « V3 · JSON contraint obtient 73,3 % [72,1 ; 74,5] sur 5 257 questions »).
 - **Filtres globaux dans la barre latérale** (définis dans `app.py`, persistants entre pages) : modèle, mode de raisonnement, variantes visibles. Les pages ajoutent leurs filtres locaux.
 - **Cohérence visuelle** : toutes les figures passent par `lib/charts.py` (marges, police, grille discrète, fond transparent, `hovertemplate` lisible, format `.1%`, barres d'erreur Wilson asymétriques, palette du thème via `theme="streamlit"` + `chartCategoricalColors`).
 - **Accessibilité** : palettes catégorielles contrastées, textes de valeurs sur les barres, intervalles toujours affichés, `help=` sur chaque KPI.
@@ -967,17 +981,17 @@ Si le fichier est verrouillé (build en cours), affichage d'un message « recons
 | Intégration | pytest | `trivia clean` sur fixture CSV → Parquet conforme ; `trivia grade` sur fixture JSONL → Parquet conforme ; `dbt build` sur fixtures silver (dans un répertoire temporaire, `TRIVIA_SILVER_DIR`/`TRIVIA_DUCKDB_PATH` surchargés) → tables gold présentes, tests dbt verts |
 | Bout en bout (manuel, Phase 0) | `trivia check` | serveur, modèle, raisonnement désactivé, paramètres acceptés, JSON contraint, déterminisme sur 3 appels identiques |
 
-Objectif de couverture : ≥ 90 % sur `clean/`, `bench/grading.py`, `bench/prompts.py`, `scrape/client.py`.
+La couverture n'est pas mesurée par un outil : `pytest-cov` n'est pas installé, et un pourcentage aurait donné une fausse assurance sur du code dont l'essentiel du risque tient à la notation. C'est cette dernière qui porte l'effort, avec 70 cas de table de vérité fixant `grade` **et** `ai_correct`.
 
 ### 12.2 Lint, format, typage
 
-- `ruff` : `select = ["E","F","I","B","UP","N","SIM","RUF","PL","PTH"]`, `line-length = 100`, `target-version = "py312"` ; `ruff format` (guillemets doubles).
+- `ruff` : `select = ["E","F","I","B","UP","N","SIM","RUF","PTH"]`, `line-length = 100`, `target-version = "py312"` ; `ruff format` (guillemets doubles). `SPEC.md` et `docs/` sont exclus du formatage : ruff reformate les blocs Python des fichiers Markdown, ce qui dénaturerait les citations verbatim de code tiers.
 - `mypy --strict` sur `src/` ; `ignore_missing_imports` ciblé sur `duckdb.*`, `streamlit.*`, `plotly.*` si nécessaire.
 - pre-commit : `ruff-check --fix`, `ruff-format`, `check-toml`, `check-yaml`, `end-of-file-fixer`, `trailing-whitespace`, `check-added-large-files --maxkb=20000`.
 
 ### 12.3 CI (GitHub Actions, `ci.yml`)
 
-Déclenchée sur push et pull request : `astral-sh/setup-uv` → `uv sync --locked` → `uv run ruff check . && uv run ruff format --check .` → `uv run mypy src` → `uv run pytest -q` → `uv run dbt build` sur les fixtures. Pas d'accès à OpenTDB ni à LM Studio en CI.
+Déclenchée sur push et pull request : `astral-sh/setup-uv` → `uv sync --locked` → `uv run ruff check . && uv run ruff format --check .` → `uv run mypy src` → `uv run pytest -q`, qui inclut `test_dbt_build.py` : un `dbt build` complet sur des fixtures silver, dans un répertoire temporaire. Pas d'accès à OpenTDB ni à LM Studio en CI.
 
 ### 12.4 Git
 
@@ -1041,7 +1055,7 @@ Développés et testés sur fixtures (TDD) : `ids`, `normalize`, `shuffle`, `gra
 
 ### Phase 5 — Couche gold (dbt)
 
-1. `uv run dbt deps --project-dir dbt`, `make build`. Vérification : `Completed successfully`, tous les tests verts, `select table_schema, table_name from information_schema.tables` liste `staging.*` et `gold.*`.
+1. `make build`. Vérification : `Completed successfully`, tous les tests verts, `select table_schema, table_name from information_schema.tables` liste `staging.*` et `gold.*`.
 2. `make docs` → `dbt/target/static_index.html` copié dans `docs/dbt/`.
 3. Commit de `data/gold/benchmark.duckdb`.
 
@@ -1081,7 +1095,7 @@ README complet (section 13), relecture croisée dans le groupe, `make lint test 
 - **Machine unique et effets thermiques** : latences valables pour ce Mac, à cet instant ; la dérive est mesurée (`mart_latency_drift`).
 - **Reproductibilité bit-exacte non garantie** même en glouton (arithmétique flottante GPU, batching) ; atténuée par `--parallel 1` et l'exécution séquentielle.
 - **Biais de position** : atténué par le mélange déterministe ; mesuré dans `mart_position_bias` ; l'étude par permutations complètes n'est pas réalisée (coût × 4).
-- **Notation automatique** : le fuzzy matching et la règle `contains` peuvent produire de rares faux positifs ; les grades sont conservés pour audit, et un échantillon de 100 réponses `fuzzy`/`contains` sera relu manuellement (résultat consigné dans le README).
+- **Notation automatique** : audit fait sur la campagne Gemma, sur l'intégralité des cas concernés plutôt que sur un échantillon. Les variantes retenues attendant toutes une réponse courte, les reconnaissances approchées sont devenues marginales : **3 sur 12 106 réponses**, toutes sur des réponses tronquées. Deux étaient de faux positifs — la règle `contains` créditait une option citée puis niée hors du texte reçu — et ont motivé la restriction de la section 9.5. Après correction, aucun faux positif connu ne subsiste. Les 71 réponses jugées inexploitables ont aussi été relues : 12 non tronquées, toutes des refus explicites de choisir (« None of the above »), correctement classées.
 
 ---
 
@@ -1165,7 +1179,7 @@ Schéma JSON (V4, booléen) : idem avec `"enum":["True","False"]`.
 | Paramètre | Natif `/api/v1/chat` | OpenAI `/v1/chat/completions` |
 |---|---|---|
 | Raisonnement désactivé | `"reasoning": "off"` | `"reasoning_effort": "none"` |
-| Décodage glouton | `temperature: 0, top_k: 1, top_p: 1.0, min_p: 0.0, repeat_penalty: 1.0` [VÉRIFIÉ] | `temperature: 0, top_p: 1.0, seed: 42, top_k: 1, min_p: 0.0, repeat_penalty: 1.0` [VÉRIFIÉ, clés inconnues ignorées silencieusement] |
+| Décodage glouton | `temperature: 0, top_k: 1, top_p: 1.0, min_p: 0.0, repeat_penalty: 1.0` [VÉRIFIÉ] | mêmes paramètres. `seed` n'est pas envoyé : avec `temperature: 0` et `top_k: 1` le décodage est déterministe par construction, une graine n'y ajouterait rien et laisserait croire que l'échantillonnage joue un rôle [VÉRIFIÉ, clés inconnues ignorées silencieusement] |
 | Longueur max | `max_output_tokens` | `max_tokens` |
 | Sortie structurée | non supportée | `response_format: {type: json_schema, json_schema: {name, strict: true, schema}}` |
 | Stats | `input_tokens`, `total_output_tokens`, `reasoning_output_tokens`, `tokens_per_second`, `time_to_first_token_seconds` | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens` |
