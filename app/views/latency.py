@@ -69,7 +69,9 @@ def render(selection: queries.Selection | None) -> None:
                 "label": "Temps au premier token",
                 "value": components.seconds(float(summary["median_ttft_s"].median() or 0), 3),
                 "help": "Duree de traitement du prompt avant le premier token genere. "
-                "Elle croit avec la longueur du prompt.",
+                "Elle croit avec la longueur du prompt. Transport natif uniquement : la "
+                "variante a sortie contrainte passe par l'endpoint compatible OpenAI, qui "
+                "ne publie pas cette statistique.",
                 "icon": ":material/hourglass_top:",
             },
         ],
@@ -153,7 +155,11 @@ def render(selection: queries.Selection | None) -> None:
             components.chart(figure, key="latency_drift")
             theme.note(
                 "Un debit qui baisse regulierement au fil des milliers d'appels signale un "
-                "ralentissement thermique de la machine, pas une propriete du modele."
+                "ralentissement thermique de la machine, pas une propriete du modele. "
+                "Seules les variantes passees par le transport natif figurent ici : "
+                "l'endpoint compatible OpenAI, impose par la sortie contrainte, ne renvoie "
+                "ni debit ni temps au premier token. Le temps de reponse, lui, est mesure "
+                "au chronometre cote client et reste comparable entre toutes les variantes."
             )
 
     st.space("medium")

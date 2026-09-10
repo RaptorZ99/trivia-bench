@@ -76,8 +76,13 @@ deux echecs de nature differente :
 | Inexploitable | Aucune reponse identifiable : echec de format, pas de connaissance. |
 | Erreur d'appel | L'appel au modele a echoue apres plusieurs tentatives. |
 
-**`response_time`** est mesure cote client autour de l'appel HTTP complet. Le temps jusqu'au
-premier token et le debit proviennent du moteur d'inference lui-meme.
+**`response_time`** est mesure cote client, au chronometre, autour de l'appel HTTP complet.
+C'est la seule mesure de temps disponible pour toutes les variantes, donc la seule sur
+laquelle les comparer.
+
+**`ttft_s`** et **`tokens_per_second`** viennent du moteur d'inference et ne sont donc
+publiees que par le transport natif (voir l'onglet Protocole). Elles sont vides pour la
+variante a sortie contrainte.
 
 ### Statistiques
 
@@ -117,9 +122,20 @@ temps mesure pour chaque question.
 **Appel de chauffe.** Le premier appel de chaque run paie la mise en cache du prompt systeme
 et l'allocation memoire. Il est effectue sur une question hors jeu et exclu des mesures.
 
-**Raisonnement desactive.** Gemma 4 raisonne par defaut. Sur une question factuelle, ce mode
-consomme l'essentiel du budget de tokens en reflexion sans changer la reponse : le benchmark
-principal le desactive, et une experience dediee mesure ce qu'il apporte.
+**Raisonnement desactive partout.** Gemma 4 raisonne par defaut : sur une question
+factuelle, ce mode consomme l'essentiel du budget de tokens en reflexion, environ 5 s par
+question au lieu de 0,9. L'axe « avec ou sans raisonnement » a ete abandonne plutot que
+traite a une autre echelle : mesure sur le jeu complet il aurait demande une soixantaine
+d'heures, et mesure sur un echantillon il n'aurait plus ete comparable au reste. Un run avec
+raisonnement reste possible, la colonne existe, mais aucun n'est publie ici.
+
+**Deux transports, une mesure en moins.** L'endpoint natif de LM Studio refuse la sortie
+structuree, et l'endpoint compatible OpenAI, qui l'accepte, ne renvoie aucune statistique
+moteur. La variante a sortie contrainte passe donc par le second et n'a ni temps au premier
+token ni debit ; les deux autres passent par le premier et les ont. Le choix etait entre le
+format garanti et les statistiques fines, pas entre les deux. Le temps de reponse, mesure
+cote client, reste lui comparable entre toutes les variantes, et la colonne `transport` de la
+couche gold indique pour chaque reponse par ou elle est passee.
 
 **Ordre des options fige.** Les options sont melangees une fois pour toutes, avec une graine
 derivee de l'identifiant de la question. Toutes les variantes et tous les modeles voient donc
