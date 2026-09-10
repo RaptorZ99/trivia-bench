@@ -128,7 +128,7 @@ def bench(
         str | None, typer.Option("--variant", help="Identifiant de variante de prompt.")
     ] = None,
     all_variants: Annotated[
-        bool, typer.Option("--all-variants", help="Enchaine les cinq variantes.")
+        bool, typer.Option("--all-variants", help="Enchaine les quatre variantes.")
     ] = False,
     model: Annotated[str | None, typer.Option("--model", help="Cle du modele LM Studio.")] = None,
     reasoning: Annotated[

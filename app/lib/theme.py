@@ -42,14 +42,16 @@ SEQUENTIAL = [
     "#33338F",
 ]
 
+# Une seule definition par couleur : la table des notations reference les constantes
+# semantiques plutot que de repeter leurs valeurs.
 GRADE_COLORS = {
-    "letter": "#5B5BD6",
+    "letter": PRIMARY,
     "exact": "#12A594",
-    "fuzzy": "#46A758",
+    "fuzzy": CORRECT,
     "contains": "#0091FF",
-    "wrong": "#E5484D",
-    "unparseable": "#FFB224",
-    "error": "#8B8B9E",
+    "wrong": WRONG,
+    "unparseable": UNPARSEABLE,
+    "error": ERROR,
 }
 
 GRADE_LABELS = {

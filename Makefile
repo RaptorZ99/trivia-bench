@@ -42,7 +42,7 @@ load-model:  ## Charge le modele dans LM Studio
 unload-model:  ## Decharge le modele
 	$(LMS) unload --all
 
-bench:  ## Lance une variante (make bench VARIANT=v2_letter)
+bench:  ## Lance une variante (make bench VARIANT=v1_letter)
 	uv run trivia bench --variant $(VARIANT)
 
 bench-all:  ## Lance les 5 variantes

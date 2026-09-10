@@ -15,7 +15,6 @@ import polars as pl
 from lib import theme
 
 GRID = "rgba(128,128,128,0.16)"
-ZERO_LINE = "rgba(128,128,128,0.35)"
 
 
 def with_alpha(color: str, alpha: float) -> str:

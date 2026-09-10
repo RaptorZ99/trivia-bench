@@ -201,11 +201,6 @@ class OpenTDBClient:
         logger.info("Nouveau token de session OpenTDB obtenu ({}…)", token[:8])
         return token
 
-    def reset_token(self, token: str) -> str:
-        """Reinitialise un token existant (efface sa memoire des questions servies)."""
-        payload = self._get("/api_token.php", {"command": "reset", "token": token})
-        return str(payload.get("token", token))
-
     def get_categories(self) -> list[Category]:
         """Liste des categories disponibles."""
         payload = self._get("/api_category.php")
@@ -225,10 +220,6 @@ class OpenTDBClient:
             medium=int(counts["total_medium_question_count"]),
             hard=int(counts["total_hard_question_count"]),
         )
-
-    def get_global_counts(self) -> dict[str, Any]:
-        """Comptages globaux (total, verifiees, en attente, rejetees)."""
-        return self._get("/api_count_global.php")
 
     def get_questions(
         self,
