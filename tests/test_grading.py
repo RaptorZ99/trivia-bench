@@ -96,6 +96,23 @@ def test_grade_structured(mc_question: Question, answer: str, grade: str, correc
     assert (result.grade, result.ai_correct) == (grade, correct), result
 
 
+def test_structured_boolean_is_exact(bool_question: Question) -> None:
+    """Une reponse JSON conforme en vrai/faux est reconnue exacte, pas rattrapee.
+
+    Sans lecture prealable du champ `answer`, la chaine brute `{"answer": "False"}` etait
+    notee par simple presence du mot, ce qui la faisait passer pour un ecart de format.
+    """
+    result = grade_answer(
+        '{\n  "answer": "False"\n}', bool_question, expects_letter=True, structured=True
+    )
+    assert (result.grade, result.ai_correct) == ("exact", True)
+
+
+def test_structured_boolean_wrong_answer(bool_question: Question) -> None:
+    result = grade_answer('{"answer": "True"}', bool_question, expects_letter=True, structured=True)
+    assert (result.grade, result.ai_correct) == ("wrong", False)
+
+
 # --- Questions vrai/faux ---
 
 

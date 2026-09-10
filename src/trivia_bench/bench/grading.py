@@ -287,6 +287,16 @@ def grade_answer(
     if error:
         return GradeResult("error", False)
 
+    # La sortie structuree est contrainte par un schema : le champ `answer` est lu avant tout
+    # autre traitement, quel que soit le type de question. Sans cela, une reponse vrai/faux
+    # parfaitement conforme (`{"answer": "False"}`) serait notee par rapprochement approximatif
+    # au lieu d'etre reconnue comme exacte.
+    if structured:
+        payload = _from_json(answer.strip())
+        if payload is not None:
+            answer = payload
+            structured = False
+
     if not expects_letter:
         if question.type == "boolean":
             return _grade_boolean(answer, question, use_cue=answer_cue)
