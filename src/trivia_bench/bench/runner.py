@@ -60,6 +60,40 @@ def make_run_id(model_key: str, variant_id: str, reasoning_mode: str) -> str:
     return f"{slug}__{variant_id}__r{reasoning_mode}__{stamp}"
 
 
+def find_resumable_run(
+    paths: DataPaths,
+    *,
+    model_key: str,
+    variant_id: str,
+    reasoning_mode: str,
+    sample_spec: str,
+) -> str | None:
+    """Cherche un run inacheve de meme configuration, a reprendre plutot qu'a recommencer.
+
+    Un run de plusieurs heures peut etre interrompu (manque de memoire, veille, `Ctrl+C`).
+    Relancer la meme commande doit alors continuer le travail entame, pas en creer un double.
+    """
+    candidates: list[tuple[datetime, str]] = []
+    for manifest_path in paths.llm_responses_dir.glob("*.manifest.json"):
+        try:
+            manifest = load_manifest(manifest_path)
+        except (OSError, ValueError):
+            continue
+        if manifest.status == "complete":
+            continue
+        if (
+            manifest.model_key == model_key
+            and manifest.prompt_variant == variant_id
+            and manifest.reasoning_mode == reasoning_mode
+            and manifest.sample_spec == sample_spec
+            and paths.run_jsonl(manifest.run_id).exists()
+        ):
+            candidates.append((manifest.started_at, manifest.run_id))
+    if not candidates:
+        return None
+    return max(candidates)[1]
+
+
 def _done_question_ids(path: Any) -> set[str]:
     """Identifiants deja traites, lus dans le JSONL d'un run interrompu."""
     if not path.exists():
@@ -107,6 +141,17 @@ def run_benchmark(
         raise RuntimeError(
             "Aucun exemple few-shot disponible : relancer `trivia clean` pour les selectionner."
         )
+
+    if resume is None:
+        resume = find_resumable_run(
+            paths,
+            model_key=model_key,
+            variant_id=variant_id,
+            reasoning_mode=reasoning_mode,
+            sample_spec=sample_spec,
+        )
+        if resume:
+            logger.info("Run inacheve detecte, reprise de {}", resume)
 
     run_id = resume or make_run_id(model_key, variant_id, reasoning_mode)
     jsonl_path = paths.run_jsonl(run_id)
