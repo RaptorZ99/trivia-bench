@@ -1,28 +1,24 @@
 """Client de l'API REST locale de LM Studio.
 
-Transport unique : `POST /api/v0/chat/completions` (ADR-04, verifie le 2026-09-10 sur
-LM Studio 0.4.24). Cet endpoint est le seul des trois exposes par LM Studio a reunir les
-trois besoins du benchmark dans un meme appel :
+L'endpoint est determine par ce que la variante exige (ADR-04, verifie le 2026-09-10 sur
+LM Studio 0.4.24), et la regle vaut a l'identique pour tous les modeles evalues :
 
-- `reasoning_effort: "none"` desactive le raisonnement, actif par defaut sur Gemma 4 comme
-  sur Qwen 3.5 ; sans cela le modele epuise son budget de tokens en reflexion sans repondre ;
-- `response_format` de type `json_schema` contraint la sortie de la variante V3 ;
-- le bloc `stats` renvoie le temps jusqu'au premier token, le debit et le temps de generation
-  seul, pour **toutes** les variantes.
+- variantes en texte court -> `POST /api/v1/chat`. Il accepte `reasoning: "off"`,
+  indispensable puisque les deux modeles raisonnent par defaut, renvoie le temps jusqu'au
+  premier token et le debit, et **rejette les cles inconnues** (HTTP 400), ce qui protege
+  contre une faute de frappe dans un parametre de decodage ;
+- variante a sortie contrainte -> `POST /api/v0/chat/completions`. L'endpoint natif refuse
+  `response_format` (HTTP 400) : cette variante ne peut pas y rester. Des deux endpoints qui
+  acceptent le schema JSON, seul celui-ci renvoie aussi le bloc `stats`, si bien que toutes
+  les variantes portent les memes colonnes.
 
-Les deux autres endpoints imposent un compromis : `/api/v1/chat` refuse `response_format`
-(HTTP 400), et `/v1/chat/completions` l'accepte mais ne renvoie aucune statistique moteur.
-Mesurer une variante par un chemin et les autres par un second aurait produit des colonnes
-qui ne veulent pas dire la meme chose ; un seul transport les rend comparables.
+Les deux endpoints ont ete mesures equivalents sur 40 questions appariees, en alternant leur
+ordre pour neutraliser le cache de prompt : reponses identiques, TTFT median 0,139 s contre
+0,138 s, debit 21,4 tok/s de part et d'autre.
 
 Le SDK Python `lmstudio` n'est pas utilise pour l'inference : dans sa derniere version
 publiee, il n'expose aucun moyen de desactiver le raisonnement et melange celui-ci au texte
 de reponse.
-
-Attention : cet endpoint **ignore silencieusement les cles inconnues** (HTTP 200 avec un
-parametre fantaisiste), contrairement a `/api/v1/chat` qui les rejette. Les noms des
-parametres de decodage sont donc verifies par `trivia check` et par les tests, pas par le
-serveur.
 """
 
 from __future__ import annotations
@@ -134,6 +130,21 @@ class LMStudioClient:
             )
         return models
 
+    def loaded_runtime(self) -> dict[str, Any] | None:
+        """Description de l'instance chargee, lue sur `/api/v0/models`.
+
+        Cet endpoint expose le format servi (`gguf` ou `mlx`, donc le moteur d'inference) et
+        la longueur de contexte reellement appliquee, que LM Studio peut avoir ajustee. Il
+        repond sans consommer d'inference et quel que soit l'endpoint utilise par la variante.
+        """
+        response = self._client.get("/api/v0/models")
+        response.raise_for_status()
+        for item in response.json().get("data", []):
+            if item.get("state") == "loaded":
+                entry: dict[str, Any] = item
+                return entry
+        return None
+
     def get_model(self, model_key: str) -> ModelInfo | None:
         """Retourne les informations d'un modele donne, ou `None` s'il est inconnu."""
         for model in self.list_models():
@@ -144,7 +155,8 @@ class LMStudioClient:
     # --- Inference ---
 
     def complete(self, request: LLMRequest, *, max_retries: int = 3) -> LLMResponse:
-        """Envoie une requete et renvoie une reponse normalisee."""
+        """Envoie une requete et renvoie une reponse normalisee, quel que soit l'endpoint."""
+        call = self._chat_v0 if request.transport == "api_v0" else self._chat_native
         started = time.perf_counter()
         attempt = 0
 
@@ -158,7 +170,7 @@ class LMStudioClient:
         def _call() -> LLMResponse:
             nonlocal attempt
             attempt += 1
-            return self._chat(request)
+            return call(request)
 
         try:
             response = _call()
@@ -190,8 +202,49 @@ class LMStudioClient:
         payload: dict[str, Any] = response.json()
         return payload
 
-    def _chat(self, request: LLMRequest) -> LLMResponse:
-        """Appelle `/api/v0/chat/completions` : sortie contrainte et statistiques moteur."""
+    def _chat_native(self, request: LLMRequest) -> LLMResponse:
+        """`POST /api/v1/chat` : texte, statistiques moteur, cles inconnues rejetees."""
+        body: dict[str, Any] = {
+            "model": request.model_key,
+            "input": request.user,
+            "reasoning": request.reasoning_mode,
+            "temperature": 0,
+            "top_k": 1,
+            "top_p": 1.0,
+            "min_p": 0.0,
+            "repeat_penalty": 1.0,
+            "max_output_tokens": request.max_tokens,
+            "store": False,
+        }
+        if request.system:
+            body["system_prompt"] = request.system
+
+        payload = self._post("/api/v1/chat", body)
+        stats = payload.get("stats") or {}
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        for item in payload.get("output", []):
+            kind = item.get("type")
+            texte = str(item.get("content", ""))
+            if kind == "message":
+                content_parts.append(texte)
+            elif kind == "reasoning":
+                reasoning_parts.append(texte)
+
+        return LLMResponse(
+            content="".join(content_parts),
+            reasoning="".join(reasoning_parts) or None,
+            prompt_tokens=int(stats.get("input_tokens") or 0),
+            completion_tokens=int(stats.get("total_output_tokens") or 0),
+            reasoning_tokens=int(stats.get("reasoning_output_tokens") or 0),
+            tokens_per_second=stats.get("tokens_per_second"),
+            ttft_s=stats.get("time_to_first_token_seconds"),
+            finish_reason=payload.get("finish_reason"),
+            raw=payload,
+        )
+
+    def _chat_v0(self, request: LLMRequest) -> LLMResponse:
+        """`POST /api/v0/chat/completions` : sortie contrainte **et** statistiques moteur."""
         messages: list[dict[str, str]] = []
         if request.system:
             messages.append({"role": "system", "content": request.system})

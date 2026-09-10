@@ -93,8 +93,13 @@ class LLMRequest(BaseModel):
 
     @property
     def transport(self) -> Transport:
-        """Un seul endpoint sert toutes les variantes (ADR-04)."""
-        return "api_v0"
+        """L'endpoint decoule de ce que la variante exige (ADR-04).
+
+        L'endpoint natif rejette `response_format` : une variante a sortie contrainte ne
+        peut pas y rester. Des deux qui l'acceptent, `/api/v0` est le seul a renvoyer aussi
+        les statistiques moteur, ce qui garde les memes colonnes pour toutes les variantes.
+        """
+        return "api_v0" if self.json_schema is not None else "native"
 
 
 class LLMResponse(BaseModel):
@@ -135,7 +140,6 @@ class RunManifest(BaseModel):
     generation_params: dict[str, Any]
     lmstudio_version: str | None = None
     runtime_engine: str | None = None
-    runtime_version: str | None = None
     model_format: str | None = None
     python_version: str
     package_version: str

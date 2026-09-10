@@ -5,9 +5,10 @@ quelques secondes que le serveur repond, que le modele est charge avec la config
 attendue, que le raisonnement est bien desactivable, que les parametres de decodage glouton
 sont acceptes et que deux appels identiques donnent la meme reponse.
 
-Un controle vise specifiquement l'invariant qui a motive le choix du transport : la sortie
-contrainte doit livrer les memes statistiques moteur que le texte libre. Sans cela, une
-variante serait mesuree autrement que les autres et l'ecart observe ne voudrait rien dire.
+Deux controles visent des invariants dont depend la validite des comparaisons : la sortie
+contrainte doit livrer les memes statistiques moteur que le texte court, sans quoi une
+variante serait mesuree autrement que les autres ; et la longueur de contexte appliquee doit
+etre celle demandee, faute de quoi deux modeles ne seraient pas compares a configuration egale.
 """
 
 from __future__ import annotations
@@ -118,7 +119,7 @@ def run_checks(
             _render(results, console)
             return False
 
-        # 4. Raisonnement desactivable
+        # 4. Raisonnement desactivable, sur l'endpoint des variantes en texte court
         plain = LLMRequest(
             model_key=key, system=_SYSTEM, user=_USER, max_tokens=8, reasoning_mode="off"
         )
@@ -134,16 +135,20 @@ def run_checks(
             )
         )
 
-        # 5. Moteur reellement utilise, lu dans la reponse plutot que dans la CLI
-        runtime = first.raw.get("runtime") or {}
-        model_meta = first.raw.get("model_info") or {}
+        # 5. Format servi et contexte applique, releves sur l'instance elle-meme.
+        # Le format decide du moteur d'inference : comparer deux modeles servis par deux
+        # moteurs mesurerait le moteur autant que le modele.
+        loaded = client.loaded_runtime() or {}
+        applique = loaded.get("loaded_context_length")
         results.append(
             CheckResult(
-                "Moteur d'inference",
-                bool(runtime.get("name")),
-                f"{runtime.get('name', '?')} {runtime.get('version', '')} · "
-                f"format {model_meta.get('format', '?')} · "
-                f"contexte {model_meta.get('context_length', '?')}",
+                "Format et contexte servis",
+                bool(loaded) and applique == info.context_length,
+                f"format {loaded.get('compatibility_type', '?')} · "
+                f"contexte applique {applique} · demande {info.context_length}"
+                + (
+                    "" if applique == info.context_length else " — longueur reecrite par le serveur"
+                ),
             )
         )
 
@@ -177,7 +182,7 @@ def run_checks(
             )
         )
 
-        # 8. Sortie structuree, sur le meme transport que le reste
+        # 8. Sortie structuree : elle exige l'autre endpoint, l'endpoint natif la refusant
         structured = LLMRequest(
             model_key=key,
             system=_SYSTEM,
@@ -202,8 +207,8 @@ def run_checks(
             )
         )
 
-        # 9. Le point qui a motive le transport unique : la sortie contrainte doit livrer les
-        # memes statistiques que le texte libre, sans quoi les variantes ne se comparent pas.
+        # 9. Invariant des colonnes : la sortie contrainte doit livrer les memes statistiques
+        # que le texte court, sans quoi les variantes ne porteraient pas les memes mesures.
         results.append(
             CheckResult(
                 "Statistiques sur sortie contrainte",

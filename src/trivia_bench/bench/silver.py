@@ -78,7 +78,6 @@ RUNS_SCHEMA: dict[str, pl.DataType] = {
     "generation_params": pl.String(),
     "lmstudio_version": pl.String(),
     "runtime_engine": pl.String(),
-    "runtime_version": pl.String(),
     "python_version": pl.String(),
     "package_version": pl.String(),
     "git_sha": pl.String(),

@@ -73,7 +73,7 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **Format des modèles** [VÉRIFIÉ] | LM Studio sert les modèles GGUF par `llama.cpp` et les modèles MLX par `mlx-llm`, deux moteurs aux performances différentes. Le build MLX de la famille `qwen3_5` ignore la longueur de contexte demandée : son ajustement automatique la réécrit vers ce que la mémoire permet (32 768 obtenus pour 4 096 demandés). | Les deux modèles évalués sont chargés en **GGUF**, avec le même contexte et le même moteur : sans quoi l'écart de latence entre modèles mesurerait aussi l'écart entre moteurs. |
 | **LM Studio** [VÉRIFIÉ] | Application 0.4.24, runtime `llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0`, CLI `lms` dans `~/.lmstudio/bin` (pas dans le `PATH`). Serveur local sur le port 1234. Clé du modèle : `google/gemma-4-12b-qat`, architecture `gemma4`, contexte max 262 144. | Le Makefile et la CLI utilisent le chemin complet de `lms`. |
 | **Gemma 4 « thinking »** [VÉRIFIÉ] | Le raisonnement est **actif par défaut**. Sans le désactiver, le modèle consomme tout son budget de tokens en raisonnement et ne répond pas (voir annexe A). Il se désactive **par requête** avec `reasoning: "off"` (API REST native `/api/v1/chat`) ou `reasoning_effort: "none"` (endpoint compatible OpenAI). Le SDK Python `lmstudio` 1.5.0 (dernière version stable, août 2025) **ne peut pas** le désactiver et laisse fuiter un marqueur interne dans le texte de réponse. | Le client LLM utilise l'API REST de LM Studio via `httpx` (ADR-04). |
-| **Sortie structurée et statistiques** [VÉRIFIÉ] | LM Studio expose trois endpoints de complétion. `/api/v1/chat` rejette `response_format` (HTTP 400 `unrecognized_keys`). `/v1/chat/completions` l'accepte mais ne renvoie aucun bloc `stats`. `/api/v0/chat/completions` accepte `response_format` de type `json_schema` **et** `reasoning_effort: "none"`, **et** renvoie `stats` (temps au premier token, débit) ainsi que `model_info` et `runtime`. | Toutes les variantes passent par `/api/v0/chat/completions` : c'est le seul endpoint qui donne format contraint et statistiques moteur dans le même appel, donc le seul qui rende les variantes comparables entre elles. |
+| **Sortie structurée et statistiques** [VÉRIFIÉ] | LM Studio expose trois endpoints de complétion. `/api/v1/chat` renvoie les statistiques moteur et rejette les clés inconnues, mais refuse `response_format` (HTTP 400 `unrecognized_keys`). `/v1/chat/completions` accepte `response_format` mais ne renvoie aucun bloc `stats`. `/api/v0/chat/completions` accepte `response_format` de type `json_schema` **et** renvoie `stats`. | Une variante à sortie contrainte ne peut pas rester sur l'endpoint natif. Elle passe par `/api/v0/chat/completions`, seul des deux endpoints compatibles à renvoyer aussi les statistiques moteur : toutes les variantes portent ainsi les mêmes colonnes. |
 | **Calendrier** | Sessions les 10, 11 et 30 septembre 2026. | Les runs longs (≈ 4 h de machine) se font entre les sessions ; tout est reprenable. |
 
 ### 1.3 Objectifs de qualité
@@ -92,7 +92,7 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **ADR-01** | Médaillon sur fichiers locaux : bronze = CSV + JSONL bruts, silver = Parquet (compression zstd), gold = fichier `.duckdb` construit par dbt. | Base Postgres, SQLite | Imposé par les consignes ; aucun serveur à opérer ; DuckDB lit le Parquet nativement [DOC]. |
 | **ADR-02** | Projet `uv` unique, `src/` layout, package `trivia_bench`, CLI Typer `trivia` avec une commande par étape (`scrape`, `clean`, `check`, `bench`, `grade`, `build`, `dashboard`). | Poetry, notebooks, scripts épars | `uv` déjà installé (0.10.11), lockfile reproductible, `uv sync` unique pour un coéquipier [DOC]. |
 | **ADR-03** | Polars pour toute la manipulation de données du pipeline ; pandas n'apparaît que comme dépendance transitive de Streamlit. Le dashboard lit DuckDB en Polars (`.pl()`). | pandas partout | Polars écrit le Parquet sans PyArrow, typage fort (`pl.Enum`, `pl.List`), interop DuckDB directe (`.pl()`) [VÉRIFIÉ]. Plotly Express 6.9 accepte les DataFrames Polars (via Narwhals), y compris pour `error_y` [VÉRIFIÉ]. |
-| **ADR-04** | **Client LLM = API REST de LM Studio via `httpx`, endpoint unique `POST /api/v0/chat/completions`** pour toutes les variantes : `reasoning_effort: "none"`, `response_format: json_schema` quand la variante l'exige, et bloc `stats` renvoyé dans tous les cas. Le SDK `lmstudio` n'est pas utilisé pour l'inférence. | `/api/v1/chat` ; `/v1/chat/completions` ; SDK Python `lmstudio` ; package `openai` | Un seul endpoint pour toutes les variantes est la condition d'une comparaison valide : mesurer une variante par un chemin et les autres par un second produirait des colonnes qui ne veulent pas dire la même chose. `/api/v0/chat/completions` est le seul des trois à réunir sortie contrainte et statistiques moteur [VÉRIFIÉ, annexe A]. Le SDK 1.5.0 n'expose aucun champ pour désactiver le raisonnement et renvoie celui-ci mélangé à la réponse avec un marqueur interne. Le package `openai` n'apporte rien de plus que `httpx` et masquerait les champs propres à LM Studio. |
+| **ADR-04** | **Client LLM = API REST de LM Studio via `httpx`. L'endpoint découle de ce que la variante exige**, et la règle s'applique à l'identique à tous les modèles : `POST /api/v1/chat` pour les variantes en texte court (`reasoning: "off"`), `POST /api/v0/chat/completions` pour la variante à sortie contrainte (`reasoning_effort: "none"` + `response_format: json_schema`). Le SDK `lmstudio` n'est pas utilisé pour l'inférence. | Tout faire passer par `/api/v0/chat/completions` ; `/v1/chat/completions` pour la sortie contrainte ; SDK Python `lmstudio` ; package `openai` | L'endpoint natif rejette `response_format` : la variante contrainte ne peut pas y rester [VÉRIFIÉ, annexe A]. Des deux endpoints qui l'acceptent, `/api/v0/chat/completions` est le seul à renvoyer aussi les statistiques moteur, ce qui garde les mêmes colonnes pour toutes les variantes. Comme la règle ne dépend que de la variante, deux modèles se comparent toujours à endpoint égal. Les deux endpoints ont par ailleurs été mesurés équivalents (section 8.1). Le SDK 1.5.0 n'expose aucun champ pour désactiver le raisonnement et renvoie celui-ci mélangé à la réponse avec un marqueur interne. Le package `openai` n'apporte rien de plus que `httpx` et masquerait les champs propres à LM Studio. |
 | **ADR-05** | **Raisonnement désactivé** pour tous les runs. L'axe « avec ou sans raisonnement » est abandonné. | Raisonnement activé partout, ou sur échantillon | Avec le raisonnement activé, le modèle génère 60 à 200 tokens de réflexion avant de répondre, soit environ 5 s par question au lieu de 0,9. Sur le jeu complet cela représenterait 7 h par variante, et 58 h pour couvrir deux modèles. Un échantillon aurait rendu cet axe incomparable aux autres, mesurés sur l'ensemble ; il est plus honnête de ne pas le traiter que de le traiter à une autre échelle. |
 | **ADR-06** | Décodage glouton (`temperature=0`, `top_k=1`, `top_p=1`, `min_p=0`, `repeat_penalty=1.0`), instance chargée avec `--parallel 1`, exécution strictement séquentielle, premier appel de chauffe exclu des statistiques. | Sampling recommandé par Google (`temperature=1.0`, `top_p=0.95`, `top_k=64`) | Un benchmark veut la réponse la plus probable et des temps par question propres ; le batching concurrent fausse la latence et nuit à la reproductibilité [DOC]. |
 | **ADR-07** | La notation (`grade`, `ai_correct`) est calculée **une seule fois en Python** au moment d'écrire la couche silver. dbt ne fait que de l'agrégation. | Notation en SQL dans dbt | Le fuzzy matching (rapidfuzz) n'a pas d'équivalent SQL identique ; une seule implémentation testée évite deux logiques divergentes. |
@@ -576,9 +576,26 @@ Objectif : interroger le modèle pour chaque question avec une variante de promp
 Une classe `LMStudioClient(base_url, model_key, timeout)` avec :
 
 - `health() -> ServerInfo` : `GET /api/v1/models` → vérifie que `model_key` est présent et chargé (`loaded_instances` non vide), renvoie `context_length`, `parallel`, `capabilities.reasoning` [VÉRIFIÉ : le champ existe et l'instance chargée expose `contextLength: 4096`, `parallel: 4` par défaut].
-- `complete(req: LLMRequest) -> LLMResponse` : envoie la requête et normalise la réponse.
+- `complete(req: LLMRequest) -> LLMResponse` : route vers l'endpoint qu'exige la variante, puis normalise la réponse.
+- `loaded_runtime()` : `GET /api/v0/models` → format servi (`gguf` ou `mlx`, donc le moteur d'inférence), quantization et **longueur de contexte réellement appliquée**, que LM Studio peut avoir ajustée. Relevé sans consommer d'inférence et quel que soit l'endpoint de la variante ; recopié dans le manifeste.
 
-**Requête** (`POST /api/v0/chat/completions`) [VÉRIFIÉ] :
+**Variantes en texte court** — `POST /api/v1/chat` [VÉRIFIÉ] :
+
+```json
+{
+  "model": "google/gemma-4-12b-qat",
+  "system_prompt": "...",            // omis si la variante n'a pas de prompt système
+  "input": "...",
+  "reasoning": "off",
+  "temperature": 0, "top_k": 1, "top_p": 1.0, "min_p": 0.0, "repeat_penalty": 1.0,
+  "max_output_tokens": 8,
+  "store": false
+}
+```
+
+Réponse exploitée : `output[]` (`type: "message"` → `content` ; `type: "reasoning"` → `ai_reasoning`), `stats.input_tokens`, `stats.total_output_tokens`, `stats.reasoning_output_tokens`, `stats.tokens_per_second`, `stats.time_to_first_token_seconds`. Cet endpoint renvoie HTTP 400 `unrecognized_keys` pour toute clé inconnue, ce qui protège contre une faute de frappe dans un paramètre de décodage.
+
+**Variante à sortie contrainte** — `POST /api/v0/chat/completions` [VÉRIFIÉ] :
 
 ```json
 {
@@ -591,11 +608,15 @@ Une classe `LMStudioClient(base_url, model_key, timeout)` avec :
 }
 ```
 
-Le tour `system` est omis quand la variante n'en déclare pas ; `response_format` n'est présent que pour la variante à sortie contrainte. Tout le reste est identique d'une variante à l'autre.
+Réponse exploitée : `choices[0].message.content`, `choices[0].message.reasoning_content` (doit être vide), `choices[0].finish_reason`, `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens`, `stats.time_to_first_token`, `stats.tokens_per_second`. Cet endpoint **ignore silencieusement les clés inconnues** (HTTP 200 avec un paramètre fantaisiste) : les noms des paramètres de décodage y sont garantis par un test unitaire sur le corps de requête et par le contrôle de déterminisme de `trivia check`.
 
-**Réponse exploitée** : `choices[0].message.content`, `choices[0].message.reasoning_content` (doit être vide), `choices[0].finish_reason`, `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens`, `stats.time_to_first_token`, `stats.tokens_per_second`. Le bloc `model_info` (`arch`, `quant`, `format`, `context_length`) et le bloc `runtime` (`name`, `version`) décrivent l'instance ayant réellement servi l'appel : ils sont recopiés dans le manifeste lors de l'appel de chauffe, ce qui rend la configuration du run traçable sans dépendre de la CLI.
+**Équivalence des deux endpoints** [VÉRIFIÉ]. Comparer deux variantes servies par deux endpoints n'est valide que si ceux-ci mesurent la même chose. Mesure sur 40 questions appariées, en alternant l'ordre des deux appels pour qu'aucun ne bénéficie systématiquement du cache de prompt :
 
-Cet endpoint **ignore silencieusement les clés inconnues** (HTTP 200 avec un paramètre fantaisiste) [VÉRIFIÉ]. Les noms des paramètres de décodage ne sont donc garantis par aucune validation serveur : ils sont couverts par un test unitaire sur le corps de requête et par `trivia check`, qui vérifie en outre le déterminisme sur trois appels identiques.
+| | `/api/v1/chat` | `/api/v0/chat/completions` |
+|---|---|---|
+| Réponses différentes | 0 sur 40 | |
+| TTFT médian (cache froid) | 0,139 s | 0,138 s |
+| Débit médian | 21,4 tok/s | 21,4 tok/s |
 
 **Garde-fou raisonnement** : si `reasoning_mode = off` et que la réponse contient des tokens de raisonnement (`reasoning_output_tokens > 0` ou `reasoning_tokens > 0`), le run s'arrête avec une erreur explicite (invariant du benchmark).
 
@@ -1168,19 +1189,17 @@ Schéma JSON (V4, booléen) : idem avec `"enum":["True","False"]`.
 
 ### Annexe C — Paramètres de génération de référence
 
-Endpoint unique : `POST /api/v0/chat/completions`.
+| Paramètre | `/api/v1/chat` (texte court) | `/api/v0/chat/completions` (sortie contrainte) |
+|---|---|---|
+| Raisonnement désactivé | `"reasoning": "off"` | `"reasoning_effort": "none"` |
+| Décodage glouton | `temperature: 0, top_k: 1, top_p: 1.0, min_p: 0.0, repeat_penalty: 1.0` [VÉRIFIÉ] | mêmes paramètres. `seed` n'est pas envoyé : avec `temperature: 0` et `top_k: 1` le décodage est déterministe par construction |
+| Longueur max | `max_output_tokens` | `max_tokens` |
+| Sortie structurée | rejetée (HTTP 400) | `response_format: {type: json_schema, json_schema: {name, strict: true, schema}}` |
+| Statistiques | `stats.time_to_first_token_seconds`, `stats.tokens_per_second` | `stats.time_to_first_token`, `stats.tokens_per_second` |
+| Usage | `stats.input_tokens`, `stats.total_output_tokens`, `stats.reasoning_output_tokens` | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens` |
+| Clés inconnues | rejetées (HTTP 400) | ignorées silencieusement (HTTP 200) |
 
-| Paramètre | Valeur |
-|---|---|
-| Raisonnement désactivé | `"reasoning_effort": "none"` |
-| Décodage glouton | `temperature: 0, top_k: 1, top_p: 1.0, min_p: 0.0, repeat_penalty: 1.0` [VÉRIFIÉ]. `seed` n'est pas envoyé : avec `temperature: 0` et `top_k: 1` le décodage est déterministe par construction, une graine n'y ajouterait rien et laisserait croire que l'échantillonnage joue un rôle |
-| Longueur max | `max_tokens` |
-| Sortie structurée | `response_format: {type: json_schema, json_schema: {name, strict: true, schema}}` |
-| Statistiques | `stats.time_to_first_token`, `stats.tokens_per_second`, `stats.generation_time`, `stats.stop_reason` |
-| Usage | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.completion_tokens_details.reasoning_tokens` |
-| Provenance | `model_info.{arch, quant, format, context_length}`, `runtime.{name, version}` |
-
-Les clés inconnues sont ignorées silencieusement (HTTP 200) : les noms ci-dessus sont garantis par les tests, pas par le serveur.
+La provenance de l'instance (format servi, quantization, longueur de contexte appliquée) est relevée séparément sur `GET /api/v0/models`, sans consommer d'inférence.
 
 ### Annexe D — Index des rapports de recherche (`docs/research/`)
 

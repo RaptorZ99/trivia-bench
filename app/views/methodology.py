@@ -129,13 +129,18 @@ traite a une autre echelle : mesure sur le jeu complet il aurait demande une soi
 d'heures, et mesure sur un echantillon il n'aurait plus ete comparable au reste. Un run avec
 raisonnement reste possible, la colonne existe, mais aucun n'est publie ici.
 
-**Un seul endpoint pour toutes les variantes.** LM Studio expose trois endpoints de
-completion. `/api/v1/chat` refuse la sortie contrainte, `/v1/chat/completions` l'accepte mais
-ne publie aucune statistique moteur, `/api/v0/chat/completions` fait les deux. Le benchmark
-n'utilise que ce dernier : interroger une variante par un chemin et les autres par un second
-produirait des colonnes qui ne mesurent pas la meme chose, et l'ecart observe entre variantes
-melangerait l'effet du prompt et celui du transport. Chaque reponse porte en outre le moteur
-d'inference, sa version, le format du modele et la longueur de contexte effective.
+**L'endpoint decoule de ce que la variante exige.** LM Studio expose trois endpoints de
+completion. Les variantes en texte court passent par l'endpoint natif, qui renvoie les
+statistiques moteur et rejette les cles inconnues. La variante a sortie contrainte ne peut pas
+y rester, cet endpoint refusant la contrainte de format : elle passe par le seul autre endpoint
+qui accepte un schema JSON **et** publie les statistiques moteur. Toutes les variantes portent
+ainsi les memes colonnes, et deux modeles se comparent toujours a endpoint egal, puisque la
+regle ne depend que de la variante.
+
+Comparer deux variantes traverse en revanche deux endpoints. Leur equivalence est mesuree sur
+40 questions appariees, en alternant l'ordre des appels pour neutraliser le cache de prompt :
+reponses identiques 40 fois sur 40, temps au premier token de 0,139 s contre 0,138 s, debit de
+21,4 tokens par seconde de part et d'autre.
 
 **Ordre des options fige.** Les options sont melangees une fois pour toutes, avec une graine
 derivee de l'identifiant de la question. Toutes les variantes et tous les modeles voient donc

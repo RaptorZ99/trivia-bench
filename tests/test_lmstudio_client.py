@@ -1,4 +1,4 @@
-"""Client LM Studio : transport unique, parsing des statistiques, gestion des erreurs."""
+"""Client LM Studio : choix de l'endpoint, parsing des statistiques, gestion des erreurs."""
 
 from __future__ import annotations
 
@@ -13,20 +13,32 @@ from trivia_bench.models import LLMRequest
 
 BASE = "http://lmstudio.test"
 
+NATIVE_OK: dict[str, Any] = {
+    "model_instance_id": "trivia-bench",
+    "output": [{"type": "message", "content": "B"}],
+    "stats": {
+        "input_tokens": 70,
+        "total_output_tokens": 2,
+        "reasoning_output_tokens": 0,
+        "tokens_per_second": 21.3,
+        "time_to_first_token_seconds": 0.13,
+    },
+}
+
 V0_OK: dict[str, Any] = {
     "id": "chatcmpl-test",
     "model": "trivia-bench",
     "choices": [
         {
             "index": 0,
-            "message": {"role": "assistant", "content": "B", "reasoning_content": ""},
+            "message": {"role": "assistant", "content": '{"answer": "B"}'},
             "finish_reason": "stop",
         }
     ],
     "usage": {
         "prompt_tokens": 70,
-        "completion_tokens": 2,
-        "total_tokens": 72,
+        "completion_tokens": 7,
+        "total_tokens": 77,
         "completion_tokens_details": {"reasoning_tokens": 0},
     },
     "stats": {
@@ -71,89 +83,81 @@ def body_of(httpx_mock: HTTPXMock, index: int = 0) -> dict[str, Any]:
     return content
 
 
-def test_every_variant_uses_the_same_endpoint(
+def test_endpoint_follows_what_the_variant_requires(
     client: LMStudioClient, httpx_mock: HTTPXMock
 ) -> None:
-    """Texte libre et sortie contrainte passent par le meme endpoint.
-
-    C'est la condition pour que les temps des variantes se comparent : deux endpoints
-    produiraient des colonnes qui ne mesurent pas la meme chose.
-    """
-    httpx_mock.add_response(json=V0_OK, is_reusable=True)
+    """L'endpoint natif rejette la sortie contrainte : celle-ci passe donc par /api/v0."""
+    httpx_mock.add_response(url=f"{BASE}/api/v1/chat", json=NATIVE_OK)
+    httpx_mock.add_response(url=f"{BASE}/api/v0/chat/completions", json=V0_OK)
     client.complete(make_request())
     client.complete(make_request(json_schema=SCHEMA, max_tokens=24))
-    chemins = {request.url.path for request in httpx_mock.get_requests()}
-    assert chemins == {"/api/v0/chat/completions"}
+    chemins = [request.url.path for request in httpx_mock.get_requests()]
+    assert chemins == ["/api/v1/chat", "/api/v0/chat/completions"]
 
 
-def test_response_carries_engine_statistics(client: LMStudioClient, httpx_mock: HTTPXMock) -> None:
-    httpx_mock.add_response(json=V0_OK)
-    response = client.complete(make_request())
-    assert response.content == "B"
-    assert response.prompt_tokens == 70
-    assert response.tokens_per_second == pytest.approx(21.3)
-    assert response.ttft_s == pytest.approx(0.13)
-    assert response.finish_reason == "stop"
-    assert response.response_time > 0
-
-
-def test_body_disables_reasoning_and_pins_greedy_decoding(
+def test_native_body_disables_reasoning_and_pins_greedy_decoding(
     client: LMStudioClient, httpx_mock: HTTPXMock
 ) -> None:
-    """L'endpoint ignore les cles inconnues : leurs noms ne sont gardes que par ce test."""
-    httpx_mock.add_response(json=V0_OK)
+    httpx_mock.add_response(json=NATIVE_OK)
     client.complete(make_request())
     body = body_of(httpx_mock)
-    assert body["reasoning_effort"] == "none"
+    assert body["reasoning"] == "off"
     assert body["temperature"] == 0
     assert body["top_k"] == 1
     assert body["top_p"] == 1.0
     assert body["min_p"] == 0.0
     assert body["repeat_penalty"] == 1.0
-    assert body["max_tokens"] == 8
-    assert body["messages"] == [
-        {"role": "system", "content": "sys"},
-        {"role": "user", "content": "usr"},
-    ]
+    assert body["max_output_tokens"] == 8
+    assert body["system_prompt"] == "sys"
 
 
-def test_structured_request_keeps_statistics(client: LMStudioClient, httpx_mock: HTTPXMock) -> None:
-    """La sortie contrainte livre les memes statistiques que le texte libre."""
-    structured = dict(V0_OK)
-    structured["choices"] = [
-        {
-            "index": 0,
-            "message": {"role": "assistant", "content": '{"answer": "B"}'},
-            "finish_reason": "stop",
-        }
-    ]
-    httpx_mock.add_response(json=structured)
-    response = client.complete(make_request(json_schema=SCHEMA, max_tokens=24))
+def test_native_response_carries_engine_statistics(
+    client: LMStudioClient, httpx_mock: HTTPXMock
+) -> None:
+    httpx_mock.add_response(json=NATIVE_OK)
+    response = client.complete(make_request())
+    assert response.content == "B"
+    assert response.prompt_tokens == 70
+    assert response.tokens_per_second == pytest.approx(21.3)
+    assert response.ttft_s == pytest.approx(0.13)
+    assert response.response_time > 0
+
+
+def test_structured_body_carries_the_schema(client: LMStudioClient, httpx_mock: HTTPXMock) -> None:
+    httpx_mock.add_response(json=V0_OK)
+    client.complete(make_request(json_schema=SCHEMA, max_tokens=24))
     body = body_of(httpx_mock)
+    assert body["reasoning_effort"] == "none"
     assert body["response_format"]["type"] == "json_schema"
-    assert body["response_format"]["json_schema"]["schema"] == SCHEMA
     assert body["response_format"]["json_schema"]["strict"] is True
+    assert body["response_format"]["json_schema"]["schema"] == SCHEMA
+    assert body["max_tokens"] == 24
+
+
+def test_structured_response_carries_the_same_statistics(
+    client: LMStudioClient, httpx_mock: HTTPXMock
+) -> None:
+    """Colonnes identiques pour toutes les variantes : c'est ce qui rend V3 comparable."""
+    httpx_mock.add_response(json=V0_OK)
+    response = client.complete(make_request(json_schema=SCHEMA, max_tokens=24))
     assert response.content == '{"answer": "B"}'
     assert response.ttft_s == pytest.approx(0.13)
     assert response.tokens_per_second == pytest.approx(21.3)
+    assert response.finish_reason == "stop"
 
 
 def test_reasoning_is_captured_when_enabled(client: LMStudioClient, httpx_mock: HTTPXMock) -> None:
     httpx_mock.add_response(
         json={
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"content": "B", "reasoning_content": "thinking..."},
-                    "finish_reason": "stop",
-                }
+            "output": [
+                {"type": "reasoning", "content": "thinking..."},
+                {"type": "message", "content": "B"},
             ],
-            "usage": {
-                "prompt_tokens": 70,
-                "completion_tokens": 40,
-                "completion_tokens_details": {"reasoning_tokens": 38},
+            "stats": {
+                "input_tokens": 70,
+                "total_output_tokens": 40,
+                "reasoning_output_tokens": 38,
             },
-            "stats": {"tokens_per_second": 20.0, "time_to_first_token": 0.2},
         }
     )
     response = client.complete(make_request(reasoning_mode="on", max_tokens=1024))
@@ -164,14 +168,36 @@ def test_reasoning_is_captured_when_enabled(client: LMStudioClient, httpx_mock: 
 
 def test_reasoning_leak_raises(client: LMStudioClient, httpx_mock: HTTPXMock) -> None:
     """Un raisonnement produit alors qu'il est desactive invalide le protocole du benchmark."""
-    leaked = dict(V0_OK)
-    leaked["usage"] = {
-        **V0_OK["usage"],
-        "completion_tokens_details": {"reasoning_tokens": 12},
-    }
+    leaked = dict(NATIVE_OK)
+    leaked["stats"] = {**NATIVE_OK["stats"], "reasoning_output_tokens": 12}
     httpx_mock.add_response(json=leaked)
     with pytest.raises(ReasoningLeakError):
         client.complete(make_request())
+
+
+def test_loaded_runtime_reports_format_and_context(
+    client: LMStudioClient, httpx_mock: HTTPXMock
+) -> None:
+    """Le format servi decide du moteur d'inference : il conditionne la comparaison."""
+    httpx_mock.add_response(
+        json={
+            "data": [
+                {"id": "autre", "state": "not-loaded", "compatibility_type": "mlx"},
+                {
+                    "id": "trivia-bench",
+                    "state": "loaded",
+                    "arch": "gemma4",
+                    "compatibility_type": "gguf",
+                    "quantization": "Q4_0",
+                    "loaded_context_length": 4096,
+                },
+            ]
+        }
+    )
+    loaded = client.loaded_runtime()
+    assert loaded is not None
+    assert loaded["compatibility_type"] == "gguf"
+    assert loaded["loaded_context_length"] == 4096
 
 
 def test_client_error_is_not_retried(
@@ -201,7 +227,7 @@ def test_transient_error_then_success(
 ) -> None:
     monkeypatch.setattr("tenacity.nap.time.sleep", lambda _: None)
     httpx_mock.add_response(status_code=503, text="busy")
-    httpx_mock.add_response(json=V0_OK)
+    httpx_mock.add_response(json=NATIVE_OK)
     response = client.complete(make_request())
     assert (response.content, response.error, response.attempt) == ("B", None, 2)
 

@@ -227,24 +227,21 @@ def run_benchmark(
         )
         warmup = client.complete(warmup_request)
         manifest.warmup_time_s = warmup.response_time
-        # Le moteur et le format effectifs viennent de la reponse elle-meme, plus fiables que
-        # `lms runtime ls` : ils decrivent l'instance qui a reellement servi ce run.
-        runtime = warmup.raw.get("runtime") or {}
-        model_info = warmup.raw.get("model_info") or {}
-        if runtime:
-            manifest.runtime_engine = str(runtime.get("name") or manifest.runtime_engine)
-            manifest.runtime_version = runtime.get("version")
-        if model_info:
-            manifest.model_format = model_info.get("format")
-            manifest.model_quant = model_info.get("quant") or manifest.model_quant
-            manifest.context_length = model_info.get("context_length") or manifest.context_length
+
+        # Format servi et contexte reellement applique : LM Studio peut ajuster la longueur
+        # demandee, et le format decide du moteur d'inference. Les deux conditionnent la
+        # comparabilite entre modeles, ils sont donc releves sur l'instance elle-meme.
+        loaded = client.loaded_runtime()
+        if loaded:
+            manifest.model_format = loaded.get("compatibility_type")
+            manifest.model_quant = loaded.get("quantization") or manifest.model_quant
+            manifest.context_length = loaded.get("loaded_context_length") or manifest.context_length
         logger.info(
-            "Appel de chauffe : {:.2f} s · moteur {} {} · format {} · contexte {}",
+            "Appel de chauffe : {:.2f} s · format {} · contexte {} · moteur {}",
             warmup.response_time,
-            manifest.runtime_engine,
-            manifest.runtime_version or "",
             manifest.model_format or "?",
             manifest.context_length or "?",
+            manifest.runtime_engine or "?",
         )
 
         n_errors = 0

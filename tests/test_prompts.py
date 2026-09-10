@@ -93,13 +93,14 @@ def test_fewshot_block_formats_both_types() -> None:
     assert "Answer: True" in block
 
 
-def test_all_variants_share_one_transport(mc_question: Question) -> None:
-    """Un seul endpoint sert toutes les variantes : c'est ce qui rend leurs temps comparables."""
+def test_transport_follows_the_variant(mc_question: Question) -> None:
+    """Seule une variante a sortie contrainte quitte l'endpoint natif, qui la refuse."""
     plain, plain_hash = render_request(PROMPT_VARIANTS["v1_letter"], mc_question, model_key="m")
     structured, structured_hash = render_request(
         PROMPT_VARIANTS["v3_json"], mc_question, model_key="m"
     )
-    assert plain.transport == structured.transport == "api_v0"
+    assert plain.transport == "native"
+    assert structured.transport == "api_v0"
     assert plain.json_schema is None
     assert structured.json_schema is not None
     assert plain.max_tokens == 8

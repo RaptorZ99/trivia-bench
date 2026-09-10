@@ -17,7 +17,6 @@ select
     generation_params,
     lmstudio_version,
     runtime_engine,
-    runtime_version,
     python_version,
     package_version,
     git_sha,

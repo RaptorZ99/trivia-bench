@@ -162,15 +162,22 @@ exige d'un même appel :
 | `/v1/chat/completions` | Oui (`reasoning_effort: "none"`) | Oui (`json_schema`) | Non |
 | **`/api/v0/chat/completions`** | **Oui** (`reasoning_effort: "none"`) | **Oui** (`json_schema`) | **Oui** (TTFT, tokens/s) |
 
-**Toutes les variantes passent par le même endpoint**, et c'est une condition de validité, pas
-une commodité. Mesurer la variante à sortie contrainte par un chemin et les autres par un second
-produirait des colonnes qui ne veulent pas dire la même chose : l'écart observé entre variantes
-mélangerait alors l'effet du prompt et celui du transport.
+**L'endpoint découle de ce que la variante exige**, et la règle vaut à l'identique pour les deux
+modèles. Les variantes en texte court utilisent l'endpoint natif, qui rejette les clés inconnues
+et protège donc contre une faute de frappe dans un paramètre de décodage. La variante à sortie
+contrainte ne peut pas y rester — il refuse `response_format` — et passe par
+`/api/v0/chat/completions`, seul des deux endpoints compatibles à renvoyer aussi les statistiques
+moteur. Toutes les variantes portent ainsi les mêmes colonnes, et deux modèles se comparent
+toujours à endpoint égal.
 
-En prime, chaque réponse porte les blocs `model_info` et `runtime` : architecture, quantification,
-format, longueur de contexte, moteur d'inférence et sa version. La configuration exacte ayant
-servi à chaque run est donc lisible dans les données brutes, sans dépendre de ce qu'affiche la
-ligne de commande.
+Comparer deux variantes traverse en revanche deux endpoints. Leur équivalence a été mesurée sur
+40 questions appariées, en alternant l'ordre des appels pour qu'aucun ne profite systématiquement
+du cache de prompt : **réponses identiques 40 fois sur 40**, temps au premier token de 0,139 s
+contre 0,138 s, débit de 21,4 tokens par seconde de part et d'autre.
+
+Le format servi et la longueur de contexte effectivement appliquée sont relevés sur l'instance
+elle-même et consignés dans le manifeste de chaque run : ce sont eux qui garantissent que les
+deux modèles tournent bien sur le même moteur, dans la même configuration.
 
 ### 6. Notation des réponses
 
