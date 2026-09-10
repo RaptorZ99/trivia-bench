@@ -14,14 +14,16 @@ etre celle demandee, faute de quoi deux modeles ne seraient pas compares a confi
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from rich.console import Console
 from rich.table import Table
 
+from trivia_bench.bench.grading import grade_answer
 from trivia_bench.bench.lmstudio import LMStudioClient
 from trivia_bench.bench.manifest import lmstudio_version, runtime_engine
 from trivia_bench.config import Settings
-from trivia_bench.models import LLMRequest
+from trivia_bench.models import LLMRequest, Question
 
 _SYSTEM = "You are a trivia expert. Answer with the letter of the correct option only."
 _USER = (
@@ -29,6 +31,32 @@ _USER = (
     "A) Venus\nB) Jupiter\nC) Mars\nD) Saturn\nAnswer:"
 )
 _EXPECTED = "C"
+
+# Marqueurs de tokenizer qui ne devraient jamais apparaitre dans le texte de reponse.
+# Un gabarit de chat mal defini les laisse fuiter : avec un budget de 8 tokens, un
+# « <|im_end|> » parasite suffit a rendre la reponse inexploitable sur tout un run.
+_MARQUEURS = ("<|", "|>", "</s>", "<s>", "[INST]", "[/INST]", "<end_of_turn>", "<eos>")
+
+
+_QUESTION_TEST = Question(
+    question_id="c" * 64,
+    category_id=0,
+    category="Verification",
+    category_group="Verification",
+    type="multiple",
+    difficulty="easy",
+    question="Which planet is known as the Red Planet?",
+    correct_answer="Mars",
+    incorrect_answers=["Venus", "Jupiter", "Saturn"],
+    options=["Venus", "Jupiter", "Mars", "Saturn"],
+    correct_index=2,
+    correct_letter="C",
+    n_options=4,
+    question_chars=39,
+    question_words=7,
+    is_fewshot_example=False,
+    scraped_at=datetime(2026, 9, 10, tzinfo=UTC),
+)
 
 
 @dataclass(slots=True)
@@ -182,6 +210,17 @@ def run_checks(
             )
         )
 
+        # La notation reconnait-elle la reponse comme une lettre ? C'est l'invariant dont
+        # depend toute la campagne : une reponse juste mais mal reconnue compte comme fausse.
+        note = grade_answer(first.content, _QUESTION_TEST)
+        results.append(
+            CheckResult(
+                "Notation de la reponse",
+                note.grade == "letter" and note.ai_correct,
+                f"grade {note.grade!r} · correct {note.ai_correct}",
+            )
+        )
+
         # 8. Sortie structuree : elle exige l'autre endpoint, l'endpoint natif la refusant
         structured = LLMRequest(
             model_key=key,
@@ -219,7 +258,21 @@ def run_checks(
             )
         )
 
-        # 10. Estimation de duree d'un run complet
+        # 10. Un marqueur de tokenizer qui fuit invalide la notation sur tout un run : la
+        # reponse cesse d'etre une lettre nue et tombe en « inexploitable ». Le detecter ici
+        # coute une seconde, le decouvrir apres coup coute la campagne.
+        fuites = sorted({m for m in _MARQUEURS if m in first.content or m in json_response.content})
+        results.append(
+            CheckResult(
+                "Sortie exempte de marqueurs de tokenizer",
+                not fuites,
+                "aucun marqueur dans le texte de reponse"
+                if not fuites
+                else f"marqueur(s) {fuites} presents — le gabarit de chat du modele fuit",
+            )
+        )
+
+        # 11. Estimation de duree d'un run complet
         per_call = max(first.response_time, 0.01)
         results.append(
             CheckResult(

@@ -15,16 +15,17 @@ architecture médaillon et un rapport interactif.
 
 ## Ce que mesure ce benchmark
 
-La même question de culture générale est posée de **trois façons différentes** à **trois modèles
-exécutés localement**, un par grand éditeur. On mesure ce que chaque formulation change — taux de
+La même question de culture générale est posée de **trois façons différentes** à **quatre modèles
+exécutés localement**, un par éditeur. On mesure ce que chaque formulation change — taux de
 bonnes réponses, respect du format de sortie, temps de réponse — et ce qui distingue les modèles
 à formulation égale.
 
 | Modèle | Éditeur | Paramètres | Taille |
 |---|---|---|---|
-| `google/gemma-4-12b-qat` | Google · États-Unis | 12 B | 7,15 Go |
-| `qwen/qwen3.5-9b` | Alibaba · Chine | 9 B | 6,55 Go |
-| `mistralai/ministral-3-8b` | Mistral · France | 8 B | 6,06 Go |
+| `google/gemma-4-12b-qat` | Google | 12 B | 7,15 Go |
+| `qwen/qwen3.5-9b` | Alibaba | 9 B | 6,55 Go |
+| `mistralai/ministral-3-8b` | Mistral | 8 B | 6,06 Go |
+| `microsoft/phi-4-mini` | Microsoft | 3,8 B | 2,49 Go |
 
 Les trois sont chargés dans la même configuration, servis par le même moteur d'inférence et
 interrogés selon la même règle : les écarts observés viennent des modèles, pas du montage.
@@ -281,6 +282,7 @@ export PATH="$HOME/.lmstudio/bin:$PATH"        # à ajouter dans ~/.zshrc
 lms get google/gemma-4-12b-qat --gguf          # ~7,2 Go
 lms get qwen/qwen3.5-9b --gguf                 # ~6,5 Go
 lms get mistralai/ministral-3-8b --gguf        # ~6,1 Go
+lms get microsoft/phi-4-mini --gguf            # ~2,5 Go
 make load-model                                # démarre le serveur et charge le modèle
 ```
 
@@ -288,8 +290,18 @@ Le `--gguf` n'est pas un détail : LM Studio sert les modèles GGUF par `llama.c
 MLX par `mlx-llm`. Deux moteurs différents rendraient les latences incomparables entre modèles, et
 le build MLX de la famille Qwen 3.5 ignore la longueur de contexte demandée.
 
-Pour Ministral, prendre la variante **Instruct** et non la *Reasoning* : l'éditeur les publie
-comme deux modèles distincts, et celle retenue ne contient aucune chaîne de pensée.
+Pour Ministral et Phi, prendre la variante **Instruct** et non la *Reasoning* : leurs éditeurs les
+publient comme deux modèles distincts, et celles retenues ne contiennent aucune chaîne de pensée.
+
+Les quatre campagnes s'enchaînent d'une seule commande, chaque modèle n'étant chargé qu'après la
+fin du précédent :
+
+```bash
+./scripts/chain.sh qwen/qwen3.5-9b mistralai/ministral-3-8b microsoft/phi-4-mini
+```
+
+La chaîne s'arrête si `trivia check` échoue pour un modèle : un modèle chargé dans une autre
+configuration produirait des heures de données non comparables.
 
 `make load-model` charge le modèle avec un contexte de 4 096 tokens et **un seul emplacement de
 prédiction**, condition d'une mesure de latence propre. La cible accepte un autre modèle :

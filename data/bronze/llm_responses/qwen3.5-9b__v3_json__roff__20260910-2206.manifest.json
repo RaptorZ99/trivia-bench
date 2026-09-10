@@ -1,5 +1,5 @@
 {
-  "run_id": "qwen3.5-9b__v1_letter__roff__20260910-1933",
+  "run_id": "qwen3.5-9b__v3_json__roff__20260910-2206",
   "model_key": "qwen/qwen3.5-9b",
   "model_display_name": "Qwen3.5 9B",
   "model_quant": "Q4_K_M",
@@ -7,11 +7,11 @@
   "instance_identifier": "trivia-bench",
   "context_length": 4096,
   "parallel": 1,
-  "prompt_variant": "v1_letter",
-  "variant_label": "V1 · Lettre seule",
+  "prompt_variant": "v3_json",
+  "variant_label": "V3 · JSON contraint",
   "prompt_version": "2026-09-10.1",
   "reasoning_mode": "off",
-  "transport": "native",
+  "transport": "api_v0",
   "generation_params": {
     "temperature": 0,
     "top_k": 1,
@@ -19,27 +19,27 @@
     "min_p": 0.0,
     "repeat_penalty": 1.0,
     "max_tokens": {
-      "multiple": 8,
-      "boolean": 8
+      "multiple": 24,
+      "boolean": 24
     },
     "reasoning": "off"
   },
   "lmstudio_version": "0.4.24+1",
   "runtime_engine": "llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0",
-  "model_format": "gguf",
+  "model_format": null,
   "python_version": "3.12.1",
   "package_version": "1.0.0",
-  "git_sha": "da4b2423193a1b5c9629633f0c136b0585ffb174",
+  "git_sha": "99a7f6d6fb0fce8307ee438d8cc7e7c98466a01f",
   "dataset_sha256": "bdfaba1126ea85338c208ac98ee89a98add154bd6998d687f80b6edb2b78d156",
   "sample_spec": "all",
   "sample_question_ids": null,
   "n_questions_planned": 5257,
-  "n_questions_done": 5257,
+  "n_questions_done": 0,
   "n_errors": 0,
-  "warmup_time_s": 0.45948595798108727,
-  "context_length_end": 4096,
-  "parallel_end": 1,
-  "instance_identifier_end": "trivia-bench",
+  "warmup_time_s": null,
+  "context_length_end": null,
+  "parallel_end": null,
+  "instance_identifier_end": null,
   "config_changed": false,
   "machine": {
     "platform": "macOS-26.6.2-arm64-arm-64bit",
@@ -49,7 +49,7 @@
     "memory_gb": "16",
     "macos": "26.6.2"
   },
-  "started_at": "2026-09-10T19:33:08.558468Z",
-  "finished_at": "2026-09-10T20:59:26.256194Z",
-  "status": "complete"
+  "started_at": "2026-09-10T22:06:00.694565Z",
+  "finished_at": null,
+  "status": "running"
 }
