@@ -48,13 +48,19 @@ def run_dbt_build(
         if stale.exists():
             stale.unlink()
 
-    env_backup = {
-        key: os.environ.get(key) for key in ("TRIVIA_DUCKDB_PATH", "TRIVIA_SILVER_DIR")
-    }
+    env_backup = {key: os.environ.get(key) for key in ("TRIVIA_DUCKDB_PATH", "TRIVIA_SILVER_DIR")}
     os.environ["TRIVIA_DUCKDB_PATH"] = str(build_path)
     os.environ["TRIVIA_SILVER_DIR"] = str(settings.silver_dir)
 
-    args = ["build", "--project-dir", project_dir, "--profiles-dir", project_dir, "--target", "prod"]
+    args = [
+        "build",
+        "--project-dir",
+        project_dir,
+        "--profiles-dir",
+        project_dir,
+        "--target",
+        "prod",
+    ]
     if full_refresh:
         args.append("--full-refresh")
     if select:
@@ -86,7 +92,7 @@ def run_dbt_build(
         return False
 
     # Remplacement atomique : un dashboard qui lit encore l'ancien fichier n'est pas interrompu.
-    os.replace(build_path, final_path)
+    build_path.replace(final_path)
     logger.info("Couche gold publiee dans {} ({} objets)", final_path, n_objects)
     console.print(f"[green]Couche gold construite[/green] · {final_path} · {n_objects} objets")
     return True
