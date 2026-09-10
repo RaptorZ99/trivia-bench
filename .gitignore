@@ -1,9 +1,11 @@
 # Python
+# Les motifs de dossier sont ancres a la racine : sans la barre oblique initiale,
+# `build/` exclurait aussi `src/trivia_bench/build/`, le module qui invoque dbt.
 __pycache__/
 *.py[cod]
 *.egg-info/
-build/
-dist/
+/build/
+/dist/
 
 # uv / venv
 .venv/
