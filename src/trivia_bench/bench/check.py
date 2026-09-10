@@ -4,6 +4,10 @@ Rien ne coute plus cher qu'un run de plusieurs heures invalide : ces controles v
 quelques secondes que le serveur repond, que le modele est charge avec la configuration
 attendue, que le raisonnement est bien desactivable, que les parametres de decodage glouton
 sont acceptes et que deux appels identiques donnent la meme reponse.
+
+Un controle vise specifiquement l'invariant qui a motive le choix du transport : la sortie
+contrainte doit livrer les memes statistiques moteur que le texte libre. Sans cela, une
+variante serait mesuree autrement que les autres et l'ecart observe ne voudrait rien dire.
 """
 
 from __future__ import annotations
@@ -114,23 +118,36 @@ def run_checks(
             _render(results, console)
             return False
 
-        # 4. Transport natif, raisonnement desactive
-        native = LLMRequest(
+        # 4. Raisonnement desactivable
+        plain = LLMRequest(
             model_key=key, system=_SYSTEM, user=_USER, max_tokens=8, reasoning_mode="off"
         )
-        first = client.complete(native)
-        ok_native = first.error is None and first.reasoning_tokens == 0 and first.content.strip()
+        first = client.complete(plain)
+        ok_plain = first.error is None and first.reasoning_tokens == 0 and first.content.strip()
         results.append(
             CheckResult(
-                "Transport natif · raisonnement off",
-                bool(ok_native),
+                "Raisonnement desactive",
+                bool(ok_plain),
                 f"reponse {first.content.strip()!r} · {first.completion_tokens} tokens · "
-                f"{first.response_time:.2f} s"
+                f"{first.reasoning_tokens} token(s) de raisonnement"
                 + (f" · erreur : {first.error}" if first.error else ""),
             )
         )
 
-        # 5. Statistiques de debit
+        # 5. Moteur reellement utilise, lu dans la reponse plutot que dans la CLI
+        runtime = first.raw.get("runtime") or {}
+        model_meta = first.raw.get("model_info") or {}
+        results.append(
+            CheckResult(
+                "Moteur d'inference",
+                bool(runtime.get("name")),
+                f"{runtime.get('name', '?')} {runtime.get('version', '')} · "
+                f"format {model_meta.get('format', '?')} · "
+                f"contexte {model_meta.get('context_length', '?')}",
+            )
+        )
+
+        # 6. Statistiques de debit sur une reponse texte
         results.append(
             CheckResult(
                 "Statistiques moteur",
@@ -141,10 +158,10 @@ def run_checks(
             )
         )
 
-        # 6. Determinisme sur trois appels identiques
+        # 7. Determinisme sur trois appels identiques
         answers = [first.content.strip()]
         for _ in range(2):
-            answers.append(client.complete(native).content.strip())
+            answers.append(client.complete(plain).content.strip())
         results.append(
             CheckResult(
                 "Determinisme (3 appels)",
@@ -160,7 +177,7 @@ def run_checks(
             )
         )
 
-        # 7. Sortie structuree sur le transport compatible OpenAI
+        # 8. Sortie structuree, sur le meme transport que le reste
         structured = LLMRequest(
             model_key=key,
             system=_SYSTEM,
@@ -185,13 +202,25 @@ def run_checks(
             )
         )
 
-        # 8. Estimation de duree d'un run complet
+        # 9. Le point qui a motive le transport unique : la sortie contrainte doit livrer les
+        # memes statistiques que le texte libre, sans quoi les variantes ne se comparent pas.
+        results.append(
+            CheckResult(
+                "Statistiques sur sortie contrainte",
+                json_response.ttft_s is not None and json_response.tokens_per_second is not None,
+                f"TTFT {json_response.ttft_s:.3f} s · {json_response.tokens_per_second:.1f} tok/s"
+                if json_response.ttft_s and json_response.tokens_per_second
+                else "absentes — les variantes ne seraient pas comparables",
+            )
+        )
+
+        # 10. Estimation de duree d'un run complet
         per_call = max(first.response_time, 0.01)
         results.append(
             CheckResult(
-                "Duree estimee (5 298 questions)",
+                "Duree estimee (5 257 questions)",
                 True,
-                f"~{per_call * 5298 / 60:.0f} min par variante a {per_call:.2f} s/question",
+                f"~{per_call * 5257 / 60:.0f} min par variante a {per_call:.2f} s/question",
             )
         )
 

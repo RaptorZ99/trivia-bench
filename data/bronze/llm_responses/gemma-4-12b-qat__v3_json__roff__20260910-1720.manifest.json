@@ -1,17 +1,17 @@
 {
-  "run_id": "qwen3.5-9b__v1_letter__roff__20260910-1643",
-  "model_key": "qwen/qwen3.5-9b",
-  "model_display_name": "Qwen3.5 9B",
-  "model_quant": "4bit",
-  "model_size_bytes": 5977257833,
+  "run_id": "gemma-4-12b-qat__v3_json__roff__20260910-1720",
+  "model_key": "google/gemma-4-12b-qat",
+  "model_display_name": "Gemma 4 12B QAT",
+  "model_quant": "Q4_0",
+  "model_size_bytes": 7151067268,
   "instance_identifier": "trivia-bench",
-  "context_length": 32768,
+  "context_length": 4096,
   "parallel": 1,
-  "prompt_variant": "v1_letter",
-  "variant_label": "V1 · Lettre seule",
+  "prompt_variant": "v3_json",
+  "variant_label": "V3 · JSON contraint",
   "prompt_version": "2026-09-10.1",
   "reasoning_mode": "off",
-  "transport": "native",
+  "transport": "api_v0",
   "generation_params": {
     "temperature": 0,
     "top_k": 1,
@@ -19,16 +19,18 @@
     "min_p": 0.0,
     "repeat_penalty": 1.0,
     "max_tokens": {
-      "multiple": 8,
-      "boolean": 8
+      "multiple": 24,
+      "boolean": 24
     },
     "reasoning": "off"
   },
   "lmstudio_version": "0.4.24+1",
   "runtime_engine": "llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0",
+  "runtime_version": null,
+  "model_format": null,
   "python_version": "3.12.1",
   "package_version": "1.0.0",
-  "git_sha": "f8be4c28d5cbe0a31cea72b729daa86436ff27f7",
+  "git_sha": "a10e44f9d97cfdb82e5e63249450d1e72ff6de87",
   "dataset_sha256": "bdfaba1126ea85338c208ac98ee89a98add154bd6998d687f80b6edb2b78d156",
   "sample_spec": "all",
   "sample_question_ids": null,
@@ -48,7 +50,7 @@
     "memory_gb": "16",
     "macos": "26.6.2"
   },
-  "started_at": "2026-09-10T16:43:29.627232Z",
+  "started_at": "2026-09-10T17:20:52.822367Z",
   "finished_at": null,
   "status": "running"
 }

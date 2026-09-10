@@ -26,7 +26,7 @@ from trivia_bench.paths import DataPaths
 GRADE_ENUM = pl.Enum(["letter", "exact", "fuzzy", "contains", "wrong", "unparseable", "error"])
 VARIANT_ENUM = pl.Enum(list(PROMPT_VARIANTS))
 REASONING_ENUM = pl.Enum(["off", "on"])
-TRANSPORT_ENUM = pl.Enum(["native", "openai"])
+TRANSPORT_ENUM = pl.Enum(["api_v0"])
 
 ANSWERS_SCHEMA: dict[str, pl.DataType] = {
     "run_id": pl.String(),
@@ -65,6 +65,7 @@ RUNS_SCHEMA: dict[str, pl.DataType] = {
     "model_key": pl.String(),
     "model_display_name": pl.String(),
     "model_quant": pl.String(),
+    "model_format": pl.String(),
     "model_size_bytes": pl.Int64(),
     "instance_identifier": pl.String(),
     "context_length": pl.Int32(),
@@ -77,6 +78,7 @@ RUNS_SCHEMA: dict[str, pl.DataType] = {
     "generation_params": pl.String(),
     "lmstudio_version": pl.String(),
     "runtime_engine": pl.String(),
+    "runtime_version": pl.String(),
     "python_version": pl.String(),
     "package_version": pl.String(),
     "git_sha": pl.String(),

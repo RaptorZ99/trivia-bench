@@ -35,6 +35,14 @@ models:
           - accepted_values:
               arguments:
                 values: [running, partial, complete]
+      - name: transport
+        description: >
+          Endpoint LM Studio ayant produit les reponses. Une seule valeur attendue : toutes
+          les variantes passent par le meme, sans quoi les temps ne seraient pas comparables.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [native, api_v0]
 
   - name: fct_answer
     description: >

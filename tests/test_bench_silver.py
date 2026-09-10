@@ -80,7 +80,7 @@ def paths(tmp_path: Path, questions: list[Question]) -> DataPaths:
                         "prompt_variant": "v1_letter",
                         "prompt_version": "test",
                         "prompt_sha256": "abc",
-                        "transport": "native",
+                        "transport": "api_v0",
                         "reasoning_mode": "off",
                         "prompt_tokens": 70,
                         "completion_tokens": 2,
@@ -159,7 +159,7 @@ def test_retry_after_error_replaces_the_failed_call(paths: DataPaths, settings: 
                     "prompt_variant": "v1_letter",
                     "prompt_version": "test",
                     "prompt_sha256": "abc",
-                    "transport": "native",
+                    "transport": "api_v0",
                     "reasoning_mode": "off",
                     "content": "B",
                     "prompt_tokens": 70,
@@ -189,7 +189,7 @@ def test_metadata_is_carried_over(graded: pl.DataFrame) -> None:
     assert row["model_key"] == "google/gemma-4-12b-qat"
     assert row["prompt_variant"] == "v1_letter"
     assert row["reasoning_mode"] == "off"
-    assert row["transport"] == "native"
+    assert row["transport"] == "api_v0"
 
 
 def test_token_budget_is_recorded(graded: pl.DataFrame) -> None:

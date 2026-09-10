@@ -11,7 +11,7 @@ QuestionType = Literal["multiple", "boolean"]
 Difficulty = Literal["easy", "medium", "hard"]
 Grade = Literal["letter", "exact", "fuzzy", "contains", "wrong", "unparseable", "error"]
 ReasoningMode = Literal["off", "on"]
-Transport = Literal["native", "openai"]
+Transport = Literal["native", "api_v0"]
 
 LETTERS = "ABCD"
 
@@ -93,8 +93,8 @@ class LLMRequest(BaseModel):
 
     @property
     def transport(self) -> Transport:
-        """L'endpoint natif ne supporte pas la sortie structuree (verifie le 2026-09-10)."""
-        return "openai" if self.json_schema is not None else "native"
+        """Un seul endpoint sert toutes les variantes (ADR-04)."""
+        return "api_v0"
 
 
 class LLMResponse(BaseModel):
@@ -135,6 +135,8 @@ class RunManifest(BaseModel):
     generation_params: dict[str, Any]
     lmstudio_version: str | None = None
     runtime_engine: str | None = None
+    runtime_version: str | None = None
+    model_format: str | None = None
     python_version: str
     package_version: str
     git_sha: str | None = None

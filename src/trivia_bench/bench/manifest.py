@@ -112,7 +112,7 @@ def build_manifest(
         variant_label=variant.label,
         prompt_version=prompt_version(),
         reasoning_mode=reasoning_mode,
-        transport="openai" if variant.structured else "native",
+        transport="api_v0",
         generation_params=dict(generation_params),
         lmstudio_version=lmstudio_version(),
         runtime_engine=runtime_engine(),

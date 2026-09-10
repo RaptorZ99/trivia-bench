@@ -1,16 +1,28 @@
 """Client de l'API REST locale de LM Studio.
 
-Choix du transport (ADR-04, verifie le 2026-09-10 sur LM Studio 0.4.24) :
+Transport unique : `POST /api/v0/chat/completions` (ADR-04, verifie le 2026-09-10 sur
+LM Studio 0.4.24). Cet endpoint est le seul des trois exposes par LM Studio a reunir les
+trois besoins du benchmark dans un meme appel :
 
-- l'endpoint natif `POST /api/v1/chat` accepte `reasoning: "off"`, indispensable avec Gemma 4
-  dont le raisonnement est actif par defaut, et renvoie le temps jusqu'au premier token ainsi
-  que le debit ; il refuse en revanche `response_format` ;
-- l'endpoint compatible OpenAI `POST /v1/chat/completions` accepte la sortie structuree par
-  schema JSON, avec `reasoning_effort: "none"` pour desactiver le raisonnement ; il ne renvoie
-  pas de statistiques de debit.
+- `reasoning_effort: "none"` desactive le raisonnement, actif par defaut sur Gemma 4 comme
+  sur Qwen 3.5 ; sans cela le modele epuise son budget de tokens en reflexion sans repondre ;
+- `response_format` de type `json_schema` contraint la sortie de la variante V3 ;
+- le bloc `stats` renvoie le temps jusqu'au premier token, le debit et le temps de generation
+  seul, pour **toutes** les variantes.
 
-Le SDK Python `lmstudio` n'est pas utilise pour l'inference : dans sa derniere version publiee,
-il n'expose aucun moyen de desactiver le raisonnement et melange celui-ci au texte de reponse.
+Les deux autres endpoints imposaient un compromis : `/api/v1/chat` refuse `response_format`
+(HTTP 400), et `/v1/chat/completions` l'accepte mais ne renvoie aucune statistique moteur.
+Mesurer une variante par un chemin et les autres par un second aurait produit des colonnes
+qui ne veulent pas dire la meme chose ; un seul transport les rend comparables.
+
+Le SDK Python `lmstudio` n'est pas utilise pour l'inference : dans sa derniere version
+publiee, il n'expose aucun moyen de desactiver le raisonnement et melange celui-ci au texte
+de reponse.
+
+Attention : cet endpoint **ignore silencieusement les cles inconnues** (HTTP 200 avec un
+parametre fantaisiste), contrairement a `/api/v1/chat` qui les rejette. Les noms des
+parametres de decodage sont donc verifies par `trivia check` et par les tests, pas par le
+serveur.
 """
 
 from __future__ import annotations
@@ -132,8 +144,7 @@ class LMStudioClient:
     # --- Inference ---
 
     def complete(self, request: LLMRequest, *, max_retries: int = 3) -> LLMResponse:
-        """Envoie une requete et renvoie une reponse normalisee, quel que soit le transport."""
-        call = self._complete_openai if request.transport == "openai" else self._complete_native
+        """Envoie une requete et renvoie une reponse normalisee."""
         started = time.perf_counter()
         attempt = 0
 
@@ -147,7 +158,7 @@ class LMStudioClient:
         def _call() -> LLMResponse:
             nonlocal attempt
             attempt += 1
-            return call(request)
+            return self._chat(request)
 
         try:
             response = _call()
@@ -179,49 +190,8 @@ class LMStudioClient:
         payload: dict[str, Any] = response.json()
         return payload
 
-    def _complete_native(self, request: LLMRequest) -> LLMResponse:
-        """Transport natif : reponse texte, statistiques de debit, controle du raisonnement."""
-        body: dict[str, Any] = {
-            "model": request.model_key,
-            "input": request.user,
-            "reasoning": request.reasoning_mode,
-            "temperature": 0,
-            "top_k": 1,
-            "top_p": 1.0,
-            "min_p": 0.0,
-            "repeat_penalty": 1.0,
-            "max_output_tokens": request.max_tokens,
-            "store": False,
-        }
-        if request.system:
-            body["system_prompt"] = request.system
-
-        payload = self._post("/api/v1/chat", body)
-        stats = payload.get("stats") or {}
-        content_parts: list[str] = []
-        reasoning_parts: list[str] = []
-        for item in payload.get("output", []):
-            kind = item.get("type")
-            text = str(item.get("content", ""))
-            if kind == "message":
-                content_parts.append(text)
-            elif kind == "reasoning":
-                reasoning_parts.append(text)
-
-        return LLMResponse(
-            content="".join(content_parts),
-            reasoning="".join(reasoning_parts) or None,
-            prompt_tokens=int(stats.get("input_tokens") or 0),
-            completion_tokens=int(stats.get("total_output_tokens") or 0),
-            reasoning_tokens=int(stats.get("reasoning_output_tokens") or 0),
-            tokens_per_second=stats.get("tokens_per_second"),
-            ttft_s=stats.get("time_to_first_token_seconds"),
-            finish_reason=payload.get("finish_reason"),
-            raw=payload,
-        )
-
-    def _complete_openai(self, request: LLMRequest) -> LLMResponse:
-        """Transport compatible OpenAI : necessaire pour la sortie structuree."""
+    def _chat(self, request: LLMRequest) -> LLMResponse:
+        """Appelle `/api/v0/chat/completions` : sortie contrainte et statistiques moteur."""
         messages: list[dict[str, str]] = []
         if request.system:
             messages.append({"role": "system", "content": request.system})
@@ -231,8 +201,8 @@ class LMStudioClient:
             "model": request.model_key,
             "messages": messages,
             "temperature": 0,
-            "top_p": 1.0,
             "top_k": 1,
+            "top_p": 1.0,
             "min_p": 0.0,
             "repeat_penalty": 1.0,
             "max_tokens": request.max_tokens,
@@ -249,11 +219,12 @@ class LMStudioClient:
                 },
             }
 
-        payload = self._post("/v1/chat/completions", body)
+        payload = self._post("/api/v0/chat/completions", body)
         choice = (payload.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         usage = payload.get("usage") or {}
         details = usage.get("completion_tokens_details") or {}
+        stats = payload.get("stats") or {}
 
         return LLMResponse(
             content=str(message.get("content") or ""),
@@ -261,8 +232,8 @@ class LMStudioClient:
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
             reasoning_tokens=int(details.get("reasoning_tokens") or 0),
-            tokens_per_second=None,
-            ttft_s=None,
-            finish_reason=choice.get("finish_reason"),
+            tokens_per_second=stats.get("tokens_per_second"),
+            ttft_s=stats.get("time_to_first_token"),
+            finish_reason=choice.get("finish_reason") or stats.get("stop_reason"),
             raw=payload,
         )

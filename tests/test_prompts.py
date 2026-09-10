@@ -93,15 +93,17 @@ def test_fewshot_block_formats_both_types() -> None:
     assert "Answer: True" in block
 
 
-def test_render_request_selects_transport(mc_question: Question) -> None:
-    native, native_hash = render_request(PROMPT_VARIANTS["v1_letter"], mc_question, model_key="m")
+def test_all_variants_share_one_transport(mc_question: Question) -> None:
+    """Un seul endpoint sert toutes les variantes : c'est ce qui rend leurs temps comparables."""
+    plain, plain_hash = render_request(PROMPT_VARIANTS["v1_letter"], mc_question, model_key="m")
     structured, structured_hash = render_request(
         PROMPT_VARIANTS["v3_json"], mc_question, model_key="m"
     )
-    assert native.transport == "native"
-    assert structured.transport == "openai"
-    assert native.max_tokens == 8
-    assert native_hash != structured_hash
+    assert plain.transport == structured.transport == "api_v0"
+    assert plain.json_schema is None
+    assert structured.json_schema is not None
+    assert plain.max_tokens == 8
+    assert plain_hash != structured_hash
 
 
 def test_prompt_hash_is_stable(mc_question: Question) -> None:
