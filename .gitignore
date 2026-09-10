@@ -17,7 +17,7 @@ dist/
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
-logs/
+/logs/
 
 # Streamlit
 .streamlit/secrets.toml
