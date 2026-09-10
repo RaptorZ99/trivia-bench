@@ -144,6 +144,13 @@ class RunManifest(BaseModel):
     n_questions_done: int = 0
     n_errors: int = 0
     warmup_time_s: float | None = None
+    # Configuration de l'instance relue en fin de run : LM Studio peut recharger un modele
+    # avec ses reglages par defaut si l'instance est evincee (chargement d'un autre modele,
+    # expiration du TTL). Comparer debut et fin rend cette derive visible.
+    context_length_end: int | None = None
+    parallel_end: int | None = None
+    instance_identifier_end: str | None = None
+    config_changed: bool = False
     machine: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime
     finished_at: datetime | None = None

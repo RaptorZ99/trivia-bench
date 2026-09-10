@@ -302,6 +302,31 @@ def run_benchmark(
                     status=f"{response.response_time:.2f}s · {n_errors} erreur(s)",
                 )
 
+        # L'instance a-t-elle change en cours de route ?
+        final_info = client.get_model(model_key)
+        if final_info is not None:
+            manifest.context_length_end = final_info.context_length
+            manifest.parallel_end = final_info.parallel
+            manifest.instance_identifier_end = final_info.instance_identifier
+            manifest.config_changed = (
+                final_info.context_length != manifest.context_length
+                or final_info.parallel != manifest.parallel
+                or final_info.instance_identifier != manifest.instance_identifier
+            )
+            if manifest.config_changed:
+                logger.warning(
+                    "La configuration de l'instance a change pendant le run : "
+                    "contexte {} -> {}, parallel {} -> {}, instance {} -> {}. "
+                    "Les reponses restent valides, mais les latences sont a interpreter "
+                    "avec prudence.",
+                    manifest.context_length,
+                    final_info.context_length,
+                    manifest.parallel,
+                    final_info.parallel,
+                    manifest.instance_identifier,
+                    final_info.instance_identifier,
+                )
+
         manifest.n_questions_done = n_done
         manifest.n_errors = n_errors
         manifest.finished_at = datetime.now(UTC)
