@@ -195,12 +195,17 @@ chacune pour son type.
 | `error` | L'appel au modèle a échoué après plusieurs tentatives |
 
 **Budget de tokens et troncature.** Chaque variante fixe une longueur maximale de réponse,
-enregistrée avec chaque appel. Une réponse conforme tient en un ou deux tokens ; le budget en
-accorde quatre fois plus. Sur la première variante, 98,7 % des réponses font deux tokens et
-seules 1,0 % atteignent la limite — dont 51 sur 54 commencent par un refus explicite de choisir
-(« None of the options provided are correct »). La troncature ne concerne donc que des réponses
-déjà hors format, et la colonne `is_truncated` de la couche gold permet de le vérifier à tout
-moment. La troncature se déduit de la comparaison entre tokens générés et budget demandé, plus
+enregistrée avec chaque appel. Une réponse conforme tient en deux tokens ; le budget en accorde
+quatre fois plus. Sur la variante à instruction nue, 98,7 % des réponses font exactement deux
+tokens et 1,03 % atteignent la limite. Ces 54 réponses tronquées sont **toutes** des
+non-réponses : un refus explicite de choisir (« None of the options provided are correct »), une
+contestation de l'énoncé (« The correct answer is not provided in the… »), ou l'énumération des
+quatre lettres. Aucune n'était une réponse valide coupée en route, et aucune n'est créditée.
+
+La troncature ne concerne donc que des réponses déjà hors format. La variante à sortie contrainte
+n'en produit aucune, le schéma bornant la longueur par construction. La colonne `is_truncated` de
+la couche gold permet de le vérifier à tout moment, et la notation s'en sert : le rapprochement
+par sous-chaîne y est refusé, faute de pouvoir lire la suite qui contredirait le texte reçu. La troncature se déduit de la comparaison entre tokens générés et budget demandé, plus
 fiable qu'un `finish_reason` dont la valeur dépend du moteur.
 
 La normalisation décode les entités HTML, retire les accents, la ponctuation (donc aussi la mise
