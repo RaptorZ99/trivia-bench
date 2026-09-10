@@ -207,7 +207,8 @@ def _grade_boolean(answer: str, question: Question, *, use_cue: bool) -> GradeRe
     if found_true ^ found_false:
         return _boolean_result("contains", found_true, gold)
 
-    # Comme en texte libre, le refus n'est reconnu qu'apres avoir cherche une reponse.
+    # Le refus n'est reconnu qu'apres avoir cherche une reponse : une reponse hesitante
+    # mais juste (« je ne suis pas sur, mais False ») doit etre creditee.
     return GradeResult("unparseable", False)
 
 
@@ -218,60 +219,10 @@ def _boolean_result(grade: Grade, predicted: bool, gold: bool) -> GradeResult:
     return GradeResult("wrong", False, predicted_text=label)
 
 
-def _fuzzy_score(left: str, right: str) -> float:
-    """Similarite de deux reponses normalisees.
-
-    Deux mesures se completent : `token_sort_ratio` absorbe un ordre de mots different,
-    `ratio` absorbe une espace manquante ou une faute de frappe. « leonardo davinci » contre
-    « leonardo da vinci » n'obtient que 67 avec la premiere, mais 97 avec la seconde.
-    """
-    return float(max(fuzz.ratio(left, right), fuzz.token_sort_ratio(left, right)))
-
-
-def _grade_free_text(answer: str, question: Question, *, threshold: float) -> GradeResult:
-    """Note une reponse en texte libre (variante V1)."""
-    normalized = normalize_answer(answer)
-    if not normalized:
-        return GradeResult("unparseable", False)
-
-    gold = normalize_answer(question.correct_answer)
-
-    if normalized == gold:
-        return GradeResult("exact", True, predicted_text=question.correct_answer, score=100.0)
-
-    score = _fuzzy_score(normalized, gold)
-    if score >= threshold:
-        return GradeResult("fuzzy", True, predicted_text=question.correct_answer, score=score)
-
-    if len(gold) >= 3 and gold in normalized and not _has_negation_before(normalized, gold):
-        return GradeResult("contains", True, predicted_text=question.correct_answer)
-
-    # La reponse ne correspond pas : verifier si elle designe explicitement une mauvaise option,
-    # ce qui distingue une erreur de connaissance d'une reponse hors sujet.
-    for wrong in question.incorrect_answers:
-        normalized_wrong = normalize_answer(wrong)
-        if not normalized_wrong:
-            continue
-        if normalized == normalized_wrong or (
-            len(normalized_wrong) >= 3
-            and normalized_wrong in normalized
-            and not _has_negation_before(normalized, normalized_wrong)
-        ):
-            return GradeResult("wrong", False, predicted_text=wrong)
-
-    # Le refus n'est teste qu'en dernier : une reponse hesitante qui contient malgre tout la
-    # bonne reponse (« je ne suis pas sur, mais Leonard de Vinci ») doit etre creditee.
-    if _looks_like_refusal(normalized):
-        return GradeResult("unparseable", False)
-
-    return GradeResult("wrong", False, predicted_text=answer.strip()[:200] or None)
-
-
 def grade_answer(
     answer: str,
     question: Question,
     *,
-    expects_letter: bool = True,
     structured: bool = False,
     answer_cue: bool = False,
     error: str | None = None,
@@ -280,9 +231,9 @@ def grade_answer(
 ) -> GradeResult:
     """Note une reponse du modele.
 
-    `expects_letter` distingue les variantes a choix affiches (V2 a V5) de la variante ouverte
-    (V1), `structured` active la lecture JSON, `answer_cue` la recherche du marqueur
-    « Answer: » utilise par V3 et V4.
+    Les quatre variantes affichent les options : la reponse attendue est une lettre en choix
+    multiples, le mot lui-meme en vrai/faux. `structured` active la lecture prealable du JSON,
+    `answer_cue` la recherche du marqueur « Answer: » utilise par V2 et V3.
     """
     if error:
         return GradeResult("error", False)
@@ -296,11 +247,6 @@ def grade_answer(
         if payload is not None:
             answer = payload
             structured = False
-
-    if not expects_letter:
-        if question.type == "boolean":
-            return _grade_boolean(answer, question, use_cue=answer_cue)
-        return _grade_free_text(answer, question, threshold=fuzzy_threshold)
 
     if question.type == "boolean":
         return _grade_boolean(answer, question, use_cue=answer_cue)

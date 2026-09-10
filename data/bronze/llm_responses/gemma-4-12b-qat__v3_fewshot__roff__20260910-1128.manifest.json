@@ -1,5 +1,5 @@
 {
-  "run_id": "gemma-4-12b-qat__v4_fewshot__roff__20260910-1128",
+  "run_id": "gemma-4-12b-qat__v3_fewshot__roff__20260910-1128",
   "model_key": "google/gemma-4-12b-qat",
   "model_display_name": "Gemma 4 12B QAT",
   "model_quant": "Q4_0",
@@ -7,7 +7,7 @@
   "instance_identifier": "trivia-bench",
   "context_length": 4096,
   "parallel": 1,
-  "prompt_variant": "v4_fewshot",
+  "prompt_variant": "v3_fewshot",
   "prompt_version": "2026-09-10.1",
   "reasoning_mode": "off",
   "transport": "native",
@@ -45,5 +45,6 @@
   },
   "started_at": "2026-09-10T11:28:46.187344Z",
   "finished_at": "2026-09-10T12:48:29.480913Z",
-  "status": "complete"
+  "status": "complete",
+  "variant_label": "V3 · Few-shot"
 }

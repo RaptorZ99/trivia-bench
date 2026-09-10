@@ -1,5 +1,5 @@
 {
-  "run_id": "gemma-4-12b-qat__v5_json__roff__20260910-1307",
+  "run_id": "gemma-4-12b-qat__v4_json__roff__20260910-1307",
   "model_key": "google/gemma-4-12b-qat",
   "model_display_name": "Gemma 4 12B QAT",
   "model_quant": "Q4_0",
@@ -7,7 +7,8 @@
   "instance_identifier": "trivia-bench",
   "context_length": 4096,
   "parallel": 1,
-  "prompt_variant": "v5_json",
+  "prompt_variant": "v4_json",
+  "variant_label": "V4 · JSON contraint",
   "prompt_version": "2026-09-10.1",
   "reasoning_mode": "off",
   "transport": "openai",

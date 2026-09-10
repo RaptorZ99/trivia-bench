@@ -15,7 +15,7 @@ architecture médaillon et un rapport interactif.
 
 ## Ce que mesure ce benchmark
 
-La même question de culture générale est posée au modèle de **cinq façons différentes**. On
+La même question de culture générale est posée au modèle de **quatre façons différentes**. On
 mesure ce que chaque formulation change : le taux de bonnes réponses, la capacité du modèle à
 respecter un format de sortie, et le temps de réponse.
 
@@ -107,18 +107,17 @@ applicative, c'est le champ `response_code` qui fait foi.
 - **Exemples few-shot réservés** : quatre questions servent d'exemples dans la variante V4 et
   sont exclues de l'évaluation.
 
-### 3. Les cinq variantes de prompt
+### 3. Les quatre variantes de prompt
 
 Les gabarits sont des fichiers texte versionnés dans `src/trivia_bench/prompts/`, et l'empreinte
 du prompt effectivement envoyé est enregistrée avec chaque réponse.
 
 | Variante | Ce qu'elle isole | Sortie attendue |
 |---|---|---|
-| **V1 · Question ouverte** | Connaissance en rappel actif, sans la béquille des options | Texte libre |
-| **V2 · Lettre seule** | Conformité de format sur instruction nue, avec options | `B` |
-| **V3 · Contrat de sortie** | Cadrage système et contrat explicite (convention OpenAI simple-evals) | `… Answer: B` |
-| **V4 · Few-shot** | Démonstration du format par deux exemples résolus | `B` |
-| **V5 · JSON contraint** | Format garanti par le décodage lui-même | `{"answer": "B"}` |
+| **V1 · Lettre seule** | Conformité de format sur instruction nue, avec options | `B` |
+| **V2 · Contrat de sortie** | Cadrage système et contrat explicite (convention OpenAI simple-evals) | `… Answer: B` |
+| **V3 · Few-shot** | Démonstration du format par deux exemples résolus | `B` |
+| **V4 · JSON contraint** | Format garanti par le décodage lui-même | `{"answer": "B"}` |
 
 Chaque variante existe en version choix multiples et en version vrai/faux.
 
@@ -266,8 +265,8 @@ un run complet dure environ une heure par variante.
 | `make scrape` | Collecte OpenTDB → bronze | 20 à 35 min |
 | `make clean-data` | Bronze → `silver/questions.parquet` | quelques secondes |
 | `make check` | Vérifications LM Studio | 10 s |
-| `make bench VARIANT=v2_letter` | Une variante sur tout le jeu | ~1 h |
-| `make bench-all` | Les cinq variantes | ~5 h |
+| `make bench VARIANT=v1_letter` | Une variante sur tout le jeu | ~1 h |
+| `make bench-all` | Les quatre variantes | ~4 h |
 | `make grade` | Renote tous les runs | quelques secondes |
 | `make build` | Couche gold avec dbt | < 1 min |
 | `make docs` | Documentation dbt statique | quelques secondes |
@@ -279,10 +278,10 @@ Toutes les commandes sont aussi accessibles directement :
 ```bash
 uv run trivia --help
 uv run trivia scrape [--categories 9,10] [--fresh]
-uv run trivia bench --variant v3_simple_evals [--sample stratified:400] [--reasoning on]
-uv run trivia bench --variant v2_letter --resume <run_id>     # reprise après interruption
+uv run trivia bench --variant v2_simple_evals [--sample stratified:400]
+uv run trivia bench --variant v1_letter --resume <run_id>     # reprise après interruption
 uv run trivia grade --all [--force]
-uv run trivia prompt --variant v4_fewshot                     # affiche un prompt rendu
+uv run trivia prompt --variant v3_fewshot                     # affiche un prompt rendu
 ```
 
 ### Reprise et renotation
@@ -413,7 +412,7 @@ versions de LM Studio, du moteur d'inférence, de Python et du package, commit g
 de la machine.
 
 L'identifiant de run encode la configuration :
-`gemma-4-12b-qat__v2_letter__roff__20260910-1017` (modèle, variante, raisonnement, horodatage).
+`gemma-4-12b-qat__v1_letter__roff__20260910-1017` (modèle, variante, raisonnement, horodatage).
 
 ---
 

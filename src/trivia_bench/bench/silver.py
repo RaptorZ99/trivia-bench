@@ -69,6 +69,7 @@ RUNS_SCHEMA: dict[str, pl.DataType] = {
     "context_length": pl.Int32(),
     "parallel": pl.Int32(),
     "prompt_variant": VARIANT_ENUM,
+    "variant_label": pl.String(),
     "prompt_version": pl.String(),
     "reasoning_mode": REASONING_ENUM,
     "transport": TRANSPORT_ENUM,
@@ -143,7 +144,6 @@ def grade_run(
         result = grade_answer(
             str(record.get("content") or ""),
             question,
-            expects_letter=variant.expects_letter,
             structured=variant.structured,
             answer_cue=variant.answer_cue,
             error=record.get("error"),

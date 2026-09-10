@@ -16,55 +16,49 @@ from trivia_bench.bench.prompts import (
 from trivia_bench.models import Question
 
 
-def test_five_variants_are_declared() -> None:
-    assert VARIANT_ORDER == ["v1_open", "v2_letter", "v3_simple_evals", "v4_fewshot", "v5_json"]
+def test_four_variants_are_declared() -> None:
+    """Les quatre variantes affichent toutes les options : seul le format demande change."""
+    assert VARIANT_ORDER == ["v1_letter", "v2_simple_evals", "v3_fewshot", "v4_json"]
 
 
 def test_prompt_version_is_readable() -> None:
     assert prompt_version()
 
 
-def test_v1_shows_no_options(mc_question: Question) -> None:
-    system, user = render_prompt(PROMPT_VARIANTS["v1_open"], mc_question)
-    assert system is None
-    assert user == mc_question.question
-    assert "Pomodoro" not in user
-
-
-def test_v2_lists_options_in_silver_order(mc_question: Question) -> None:
-    system, user = render_prompt(PROMPT_VARIANTS["v2_letter"], mc_question)
+def test_v1_lists_options_in_silver_order(mc_question: Question) -> None:
+    system, user = render_prompt(PROMPT_VARIANTS["v1_letter"], mc_question)
     assert system is None
     assert "A) Aglio" in user
     assert "B) Pomodoro" in user
     assert user.rstrip().endswith("Do not explain.")
 
 
-def test_v3_has_system_and_answer_contract(mc_question: Question) -> None:
-    system, user = render_prompt(PROMPT_VARIANTS["v3_simple_evals"], mc_question)
+def test_v2_has_system_and_answer_contract(mc_question: Question) -> None:
+    system, user = render_prompt(PROMPT_VARIANTS["v2_simple_evals"], mc_question)
     assert system is not None
     assert "rigorous trivia quiz solver" in system
     assert "'Answer: $LETTER'" in user
     assert user.rstrip().endswith("D) Peperoncino")
 
 
-def test_v4_includes_two_examples(mc_question: Question) -> None:
+def test_v3_includes_two_examples(mc_question: Question) -> None:
     examples = [
         make_question(question_id="1" * 64, question="Q1?", correct_answer="Pomodoro"),
         make_question(question_id="2" * 64, question="Q2?", correct_answer="Pomodoro"),
     ]
-    _, user = render_prompt(PROMPT_VARIANTS["v4_fewshot"], mc_question, fewshot=examples)
+    _, user = render_prompt(PROMPT_VARIANTS["v3_fewshot"], mc_question, fewshot=examples)
     assert user.count("Question:") == 3
     assert user.count("Answer:") == 3
     assert user.rstrip().endswith("Answer:")
 
 
-def test_v4_without_examples_fails(mc_question: Question) -> None:
+def test_v3_without_examples_fails(mc_question: Question) -> None:
     with pytest.raises(ValueError, match="few-shot"):
-        render_prompt(PROMPT_VARIANTS["v4_fewshot"], mc_question, fewshot=[])
+        render_prompt(PROMPT_VARIANTS["v3_fewshot"], mc_question, fewshot=[])
 
 
-def test_v5_declares_json_schema(mc_question: Question, bool_question: Question) -> None:
-    variant = PROMPT_VARIANTS["v5_json"]
+def test_v4_declares_json_schema(mc_question: Question, bool_question: Question) -> None:
+    variant = PROMPT_VARIANTS["v4_json"]
     assert variant.json_schema("multiple") == {
         "type": "object",
         "properties": {"answer": {"type": "string", "enum": ["A", "B", "C", "D"]}},
@@ -108,9 +102,9 @@ def test_fewshot_block_formats_both_types() -> None:
 
 
 def test_render_request_selects_transport(mc_question: Question) -> None:
-    native, native_hash = render_request(PROMPT_VARIANTS["v2_letter"], mc_question, model_key="m")
+    native, native_hash = render_request(PROMPT_VARIANTS["v1_letter"], mc_question, model_key="m")
     structured, structured_hash = render_request(
-        PROMPT_VARIANTS["v5_json"], mc_question, model_key="m"
+        PROMPT_VARIANTS["v4_json"], mc_question, model_key="m"
     )
     assert native.transport == "native"
     assert structured.transport == "openai"
@@ -119,6 +113,6 @@ def test_render_request_selects_transport(mc_question: Question) -> None:
 
 
 def test_prompt_hash_is_stable(mc_question: Question) -> None:
-    first = render_request(PROMPT_VARIANTS["v3_simple_evals"], mc_question, model_key="m")[1]
-    second = render_request(PROMPT_VARIANTS["v3_simple_evals"], mc_question, model_key="m")[1]
+    first = render_request(PROMPT_VARIANTS["v2_simple_evals"], mc_question, model_key="m")[1]
+    second = render_request(PROMPT_VARIANTS["v2_simple_evals"], mc_question, model_key="m")[1]
     assert first == second

@@ -41,11 +41,8 @@ def render(selection: queries.Selection | None) -> None:
 
     if model_pairs.height == 0 and reasoning_pairs.height == 0:
         components.empty_state(
-            "Un seul modele et un seul mode de raisonnement ont ete evalues.",
-            "Comparer un second modele : `uv run trivia bench --all-variants "
-            "--model <cle> --sample stratified:400`. Activer le raisonnement : "
-            "`uv run trivia bench --variant v3_simple_evals --reasoning on "
-            "--sample stratified:400`.",
+            "Un seul modele a ete evalue.",
+            "Comparer un second modele : `uv run trivia bench --all-variants --model <cle>`.",
         )
         _render_configurations(runs)
         return

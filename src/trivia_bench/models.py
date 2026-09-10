@@ -128,6 +128,7 @@ class RunManifest(BaseModel):
     context_length: int | None = None
     parallel: int | None = None
     prompt_variant: str
+    variant_label: str = ""
     prompt_version: str
     reasoning_mode: ReasoningMode
     transport: Transport

@@ -109,6 +109,7 @@ def build_manifest(
         context_length=model_info.context_length if model_info else None,
         parallel=model_info.parallel if model_info else None,
         prompt_variant=variant.id,
+        variant_label=variant.label,
         prompt_version=prompt_version(),
         reasoning_mode=reasoning_mode,
         transport="openai" if variant.structured else "native",

@@ -8,31 +8,9 @@ import polars as pl
 import streamlit as st
 
 from lib import charts, components, db, queries, stats, theme
+from trivia_bench.bench.prompts import PROMPT_VARIANTS
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "src" / "trivia_bench" / "prompts"
-
-DESCRIPTIONS = {
-    "v1_open": (
-        "La question seule, sans options ni consigne de format. Mesure la connaissance en "
-        "rappel actif : le modele doit produire la reponse, pas la reconnaitre."
-    ),
-    "v2_letter": (
-        "Les quatre options et une consigne nue : repondre par la lettre uniquement. "
-        "Mesure la conformite de format sans cadrage supplementaire."
-    ),
-    "v3_simple_evals": (
-        "Prompt systeme de cadrage et contrat de sortie explicite se terminant par "
-        "« Answer: X », convention du harnais d'evaluation OpenAI simple-evals."
-    ),
-    "v4_fewshot": (
-        "Deux exemples resolus avant la question cible : le format est demontre plutot "
-        "qu'explique. Les exemples sont fixes et exclus du jeu evalue."
-    ),
-    "v5_json": (
-        "Sortie contrainte par un schema JSON. Le format est garanti par le decodage lui-meme, "
-        "ce qui isole l'effet de la contrainte sur l'exactitude."
-    ),
-}
 
 
 def render(selection: queries.Selection | None) -> None:
@@ -294,7 +272,8 @@ def _render_templates(summary: pl.DataFrame) -> None:
         variant_id = row["prompt_variant"]
         with st.container(border=True, key=f"tpl_{variant_id}"):
             st.markdown(f"**{row['variant_label']}**")
-            st.caption(DESCRIPTIONS.get(variant_id, ""))
+            variant = PROMPT_VARIANTS.get(variant_id)
+            st.caption(variant.description if variant else "")
 
             system_path = PROMPTS_DIR / f"{variant_id}.system.txt"
             if system_path.exists():

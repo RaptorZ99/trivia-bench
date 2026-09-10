@@ -9,6 +9,7 @@ select
     context_length,
     parallel,
     prompt_variant::varchar as prompt_variant,
+    variant_label,
     prompt_version,
     reasoning_mode::varchar as reasoning_mode,
     transport::varchar      as transport,

@@ -18,7 +18,7 @@ from trivia_bench.config import Settings
 from trivia_bench.models import Question
 from trivia_bench.paths import DataPaths
 
-RUN_ID = "gemma-4-12b-qat__v2_letter__roff__20260910-1200"
+RUN_ID = "gemma-4-12b-qat__v1_letter__roff__20260910-1200"
 
 
 @pytest.fixture
@@ -77,7 +77,7 @@ def paths(tmp_path: Path, questions: list[Question]) -> DataPaths:
                 json.dumps(
                     {
                         "run_id": RUN_ID,
-                        "prompt_variant": "v2_letter",
+                        "prompt_variant": "v1_letter",
                         "prompt_version": "test",
                         "prompt_sha256": "abc",
                         "transport": "native",
@@ -100,7 +100,7 @@ def paths(tmp_path: Path, questions: list[Question]) -> DataPaths:
 
     manifest = build_manifest(
         run_id=RUN_ID,
-        variant=PROMPT_VARIANTS["v2_letter"],
+        variant=PROMPT_VARIANTS["v1_letter"],
         model_key="google/gemma-4-12b-qat",
         reasoning_mode="off",
         model_info=None,
@@ -148,7 +148,7 @@ def test_metadata_is_carried_over(graded: pl.DataFrame) -> None:
     row = graded.row(0, named=True)
     assert row["run_id"] == RUN_ID
     assert row["model_key"] == "google/gemma-4-12b-qat"
-    assert row["prompt_variant"] == "v2_letter"
+    assert row["prompt_variant"] == "v1_letter"
     assert row["reasoning_mode"] == "off"
     assert row["transport"] == "native"
 
@@ -182,7 +182,7 @@ def test_runs_table(paths: DataPaths, graded: pl.DataFrame) -> None:
 
 def test_manifest_round_trip(paths: DataPaths) -> None:
     manifest = load_manifest(paths.run_manifest(RUN_ID))
-    assert manifest.prompt_variant == "v2_letter"
+    assert manifest.prompt_variant == "v1_letter"
     assert manifest.python_version
     assert manifest.package_version
     assert manifest.machine

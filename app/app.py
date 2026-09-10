@@ -24,14 +24,6 @@ from views import (
     prompts,
 )
 
-VARIANT_LABELS = {
-    "v1_open": "V1 · Ouverte",
-    "v2_letter": "V2 · Lettre",
-    "v3_simple_evals": "V3 · Contrat",
-    "v4_fewshot": "V4 · Few-shot",
-    "v5_json": "V5 · JSON",
-}
-
 
 def sidebar_filters() -> queries.Selection | None:
     """Filtres globaux, appliques a toutes les pages."""
@@ -72,13 +64,17 @@ def sidebar_filters() -> queries.Selection | None:
             ),
         )
 
-        available_variants = sorted(runs["prompt_variant"].unique().to_list())
+        # Le libelle vient du manifeste de run, pas d'une table dupliquee cote dashboard.
+        labels = dict(
+            zip(runs["prompt_variant"].to_list(), runs["variant_label"].to_list(), strict=True)
+        )
+        available_variants = sorted(labels)
         selected_variants = st.pills(
             "Variantes de prompt",
             options=available_variants,
             default=available_variants,
             selection_mode="multi",
-            format_func=lambda value: VARIANT_LABELS.get(value, value),
+            format_func=lambda value: labels.get(value, value),
         )
 
         st.space("small")
