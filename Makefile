@@ -54,8 +54,11 @@ grade:  ## Note tous les runs (bronze -> silver answers)
 build:  ## Construit la couche gold avec dbt
 	uv run trivia build
 
-docs:  ## Genere la documentation dbt statique
+docs:  ## Genere la documentation dbt statique dans docs/dbt/
 	uv run dbt docs generate --project-dir dbt --profiles-dir dbt --target prod --static
+	@mkdir -p docs/dbt
+	@cp dbt/target/static_index.html docs/dbt/index.html
+	@echo "Documentation dbt : docs/dbt/index.html"
 
 dashboard:  ## Lance le dashboard Streamlit
 	uv run streamlit run app/app.py

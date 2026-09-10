@@ -339,8 +339,11 @@ raisonnement quand il est désactivé, aucune question few-shot évaluée).
 
 ```bash
 uv run dbt build --project-dir dbt --profiles-dir dbt --target prod   # équivaut à make build
-make docs                                                             # documentation statique
+make docs      # documentation dbt autonome dans docs/dbt/index.html
 ```
+
+La documentation dbt générée (lignage, description de chaque modèle et de chaque colonne)
+est consultable hors ligne : [`docs/dbt/index.html`](docs/dbt/index.html).
 
 Les commandes dbt se lancent **depuis la racine du dépôt** : dbt-duckdb résout ses chemins
 relatifs par rapport au répertoire courant.
