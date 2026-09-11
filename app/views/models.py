@@ -42,7 +42,8 @@ def render(selection: queries.Selection | None) -> None:
     if model_pairs.height == 0 and reasoning_pairs.height == 0:
         components.empty_state(
             "Un seul modele a ete evalue.",
-            "Comparer un second modele : `uv run trivia bench --all-variants --model <cle>`.",
+            "Ajouter un modele : `scripts/chain.sh <cle>` charge, verifie et lance les trois "
+            "variantes.",
         )
         _render_configurations(runs)
         return

@@ -4,9 +4,11 @@ L'endpoint est determine par ce que la variante exige (ADR-04, verifie le 2026-0
 LM Studio 0.4.24), et la regle vaut a l'identique pour tous les modeles evalues :
 
 - variantes en texte court -> `POST /api/v1/chat`. Il accepte `reasoning: "off"`,
-  indispensable puisque les deux modeles raisonnent par defaut, renvoie le temps jusqu'au
-  premier token et le debit, et **rejette les cles inconnues** (HTTP 400), ce qui protege
-  contre une faute de frappe dans un parametre de decodage ;
+  indispensable pour les modeles qui raisonnent par defaut, renvoie le temps jusqu'au premier
+  token et le debit, et **rejette les cles inconnues** (HTTP 400), ce qui protege contre une
+  faute de frappe dans un parametre de decodage. Le champ n'est joint que si le modele expose
+  la capacite : certains editeurs publient la version raisonnante comme un modele distinct,
+  et l'endpoint rejette alors le parametre ;
 - variante a sortie contrainte -> `POST /api/v0/chat/completions`. L'endpoint natif refuse
   `response_format` (HTTP 400) : cette variante ne peut pas y rester. Des deux endpoints qui
   acceptent le schema JSON, seul celui-ci renvoie aussi le bloc `stats`, si bien que toutes

@@ -37,9 +37,13 @@ models:
                 values: [running, partial, complete]
       - name: transport
         description: >
-          Endpoint LM Studio ayant produit les reponses. Une seule valeur attendue : toutes
-          les variantes passent par le meme, sans quoi les temps ne seraient pas comparables.
+          Endpoint LM Studio ayant produit la reponse. Il decoule de ce qu'exige la variante
+          et la regle vaut pour tous les modeles, si bien que deux modeles se comparent
+          toujours a endpoint egal.
         data_tests:
+          # `not_null` n'est pas redondant avec `accepted_values` : ce dernier ignore les
+          # nuls, et une valeur hors enumeration est justement convertie en nul en amont.
+          - not_null
           - accepted_values:
               arguments:
                 values: [native, api_v0]

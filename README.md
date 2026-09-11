@@ -87,7 +87,7 @@ src/trivia_bench/     # package Python : scrape, clean, bench, build
   └── prompts/        # gabarits de prompt versionnés (fichiers texte)
 dbt/                  # projet dbt : sources, staging, marts, macros, tests
 app/                  # dashboard Streamlit (lib/ + views/)
-tests/                # 188 tests : unitaires, intégration, build dbt de bout en bout
+tests/                # 191 tests : unitaires, intégration, build dbt de bout en bout
 data/                 # bronze / silver / gold, versionnés dans le dépôt
 docs/research/        # rapports de documentation ayant fondé la spécification
 ```
@@ -165,8 +165,8 @@ le budget accordé plutôt que la formulation, ce qui la rendrait incomparable a
 ### 5. Pourquoi l'API REST de LM Studio et non le SDK Python
 
 La consigne suggère d'utiliser l'API Python de LM Studio. Le SDK `lmstudio` (1.5.0, dernière
-version publiée) **ne permet pas de désactiver le mode « thinking »**, actif par défaut sur les
-deux modèles évalués. Sur une question triviale, le modèle consomme alors tout son budget de
+version publiée) **ne permet pas de désactiver le mode « thinking »**, actif par défaut sur deux
+des quatre modèles évalués. Sur une question triviale, le modèle consomme alors tout son budget de
 tokens en raisonnement et **ne répond pas** ; le SDK renvoie de surcroît le raisonnement mélangé
 au texte de réponse, suivi d'un marqueur interne.
 
@@ -421,7 +421,7 @@ modèle est publié, et celui du mode de raisonnement tant qu'aucun run ne l'act
 | `mart_question_consistency` | question | Questions ratées par toutes les variantes |
 | `mart_answer_length` | (run, exactitude) | Longueur de réponse et exactitude |
 
-33 tests de données accompagnent ces modèles : clés uniques, valeurs autorisées, intégrité
+35 tests de données accompagnent ces modèles : clés uniques, valeurs autorisées, intégrité
 référentielle, cohérence des comptages, et des invariants du protocole (aucun token de
 raisonnement quand il est désactivé, aucune question few-shot évaluée).
 
@@ -444,7 +444,7 @@ relatifs par rapport au répertoire courant.
 make all      # ruff check + ruff format --check + mypy strict + pytest
 ```
 
-188 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
+191 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
 deux clients HTTP simulés, la construction de la couche silver, et un `dbt build` complet sur des
 fixtures. La CI GitHub Actions rejoue l'ensemble sans accès réseau ni LM Studio.
 
@@ -548,13 +548,13 @@ et l'écart entre eux reste interprétable.
   pour ce qu'il est, ses valeurs extrêmes reflétant la machine autant que le modèle.
 - **Reproductibilité** : même en décodage glouton, l'arithmétique flottante sur GPU ne garantit
   pas des sorties strictement identiques d'une exécution à l'autre.
-- **Notation automatique** : le mode de reconnaissance est conservé pour chaque réponse, ce qui
-  a permis d'auditer **tous** les cas concernés plutôt qu'un échantillon. Les trois variantes
-  attendant une réponse courte, les reconnaissances approchées sont marginales : 3 sur 12 106
-  réponses, toutes sur des réponses tronquées. Deux étaient de faux positifs — une option citée
-  puis niée après la coupure — et ont conduit à interdire le rapprochement par sous-chaîne sur
-  une réponse tronquée. Les 71 réponses jugées inexploitables ont également été relues et sont
-  correctement classées : ce sont des refus explicites de choisir une option.
+- **Notation automatique** : le mode de reconnaissance est conservé pour chaque réponse, ce qui a
+  permis d'auditer **tous** les cas concernés plutôt qu'un échantillon. Les reconnaissances
+  approchées représentent 188 réponses sur 63 084, dont 187 sur des questions vrai/faux — et dans
+  ces 187 cas, la bonne réponse est le **premier mot** émis, le modèle répondant juste avant
+  d'enchaîner sur autre chose. Aucun crédit indu. Les 208 réponses jugées inexploitables ont aussi
+  été relues : refus explicites de choisir, énumérations des quatre lettres, et 117 cas où un
+  modèle répond `True` puis `False` à la suite, que la notation refuse de départager.
 
 ---
 

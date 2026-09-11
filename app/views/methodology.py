@@ -165,7 +165,7 @@ jeu de questions, versions logicielles, machine et commit git.
 largement republie. Une partie des questions a vraisemblablement ete vue pendant
 l'entrainement du modele. Les scores melangent donc connaissance et memorisation.
 
-**Quantification.** Le modele evalue est une version quantifiee sur quatre bits. Une perte de
+**Quantification.** Les modeles evalues sont des versions quantifiees sur quatre bits. Une perte de
 rappel factuel par rapport a la version pleine precision est plausible, en particulier sur les
 faits rares.
 

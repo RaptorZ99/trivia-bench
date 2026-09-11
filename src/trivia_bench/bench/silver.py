@@ -26,7 +26,9 @@ from trivia_bench.paths import DataPaths
 GRADE_ENUM = pl.Enum(["letter", "exact", "fuzzy", "contains", "wrong", "unparseable", "error"])
 VARIANT_ENUM = pl.Enum(list(PROMPT_VARIANTS))
 REASONING_ENUM = pl.Enum(["off", "on"])
-TRANSPORT_ENUM = pl.Enum(["api_v0"])
+# Une valeur absente de l'enumeration est convertie en nul sans erreur : elle doit donc
+# lister tous les endpoints ayant servi un run, pas seulement celui du dernier.
+TRANSPORT_ENUM = pl.Enum(["native", "api_v0"])
 
 ANSWERS_SCHEMA: dict[str, pl.DataType] = {
     "run_id": pl.String(),

@@ -673,7 +673,16 @@ manifest.finished_at, n_done, n_errors, status → réécriture du manifeste
 - Exécution strictement séquentielle (ADR-06). Aucune parallélisation, même via asyncio.
 - Barre de progression rich avec ETA, taux d'erreurs, dernier temps de réponse.
 - Interruption (`Ctrl+C`) propre : le manifeste passe en `partial`, reprise avec `--resume`.
-- Durées mesurées en campagne sur les 5 257 questions évaluées : V1 · Lettre seule 0,751 s de temps médian, V2 · Few-shot 0,903 s, V3 · JSON contraint 1,371 s — le décodage contraint et le transport compatible OpenAI coûtent près du double d'une lettre générée librement. Compter environ 3 h 30 pour les trois variantes, hors interruptions.
+- Durées mesurées sur les 5 257 questions évaluées, temps médian par question et temps machine cumulé des trois variantes :
+
+| Modèle | V1 · Lettre seule | V2 · Few-shot | V3 · JSON contraint | Cumul |
+|---|---|---|---|---|
+| `gemma-4-12b-qat` | 0,751 s | 0,902 s | 1,422 s | 4 h 34 |
+| `qwen3.5-9b` | 0,961 s | 0,759 s | 1,108 s | 4 h 14 |
+| `ministral-3-8b` | 0,295 s | 0,391 s | 0,711 s | 2 h 05 |
+| `phi-4-mini` | 0,170 s | 0,139 s | 0,376 s | 1 h 02 |
+
+La sortie contrainte est la plus coûteuse pour les quatre modèles : elle génère un objet JSON là où les autres variantes tiennent en deux tokens. L'effet du few-shot, lui, n'est pas de même signe partout — il ralentit Gemma, dont le prompt s'allonge de 72 à 164 tokens, mais accélère Qwen et Phi, qui produisent une réponse plus courte quand le format leur est montré.
 
 ### 8.4 Échantillonnage
 
@@ -1131,7 +1140,7 @@ README complet (section 13), relecture croisée dans le groupe, `make lint test 
 - **Temps de réponse et charge de la machine** : `response_time` est un temps de bout en bout, mesuré au chronomètre côté client sur une station de travail partagée. Il absorbe donc toute activité concurrente. Mesure de l'effet sur un même run, selon que la machine était au repos ou occupée par un autre travail : médiane +20 %, 9ᵉ décile +37 %, maximum +82 %, écart-type multiplié par 2,9. Les statistiques moteur, elles, ne bougent pas — le débit varie de moins de 2 %. Les comparaisons de vitesse entre variantes et entre modèles s'appuient donc sur le débit et le temps au premier token ; `response_time` est rapporté comme mesure de bout en bout, médiane à l'appui, ses valeurs extrêmes reflétant la machine autant que le modèle.
 - **Reproductibilité bit-exacte non garantie** même en glouton (arithmétique flottante GPU, batching) ; atténuée par `--parallel 1` et l'exécution séquentielle.
 - **Biais de position** : atténué par le mélange déterministe ; mesuré dans `mart_position_bias` ; l'étude par permutations complètes n'est pas réalisée (coût × 4).
-- **Notation automatique** : audit fait sur la campagne Gemma, sur l'intégralité des cas concernés plutôt que sur un échantillon. Les variantes retenues attendant toutes une réponse courte, les reconnaissances approchées sont devenues marginales : **3 sur 12 106 réponses**, toutes sur des réponses tronquées. Deux étaient de faux positifs — la règle `contains` créditait une option citée puis niée hors du texte reçu — et ont motivé la restriction de la section 9.5. Après correction, aucun faux positif connu ne subsiste. Les 71 réponses jugées inexploitables ont aussi été relues : 12 non tronquées, toutes des refus explicites de choisir (« None of the above »), correctement classées.
+- **Notation automatique** : audit mené sur les 63 084 réponses des quatre modèles, sur l'intégralité des cas concernés plutôt que sur un échantillon. Les trois variantes attendant une réponse courte, les reconnaissances approchées restent rares : **188 sur 63 084**, dont 187 sur des questions vrai/faux. Dans ces 187 cas, la bonne réponse est le **premier mot** de la réponse — le modèle répond juste puis enchaîne sur autre chose —, donc aucun crédit n'est indu. Le 188ᵉ est un rapprochement approché sur une date coupée par le budget de tokens. Les 208 réponses jugées inexploitables ont également été relues : refus explicites de choisir, énumérations des quatre lettres, et 117 cas où un modèle répond `True` puis `False` à la suite, que la notation refuse à juste titre de départager.
 
 ---
 
@@ -1140,7 +1149,7 @@ README complet (section 13), relecture croisée dans le groupe, `make lint test 
 | # | Question | Proposition par défaut | Validation
 |---|---|---|
 | Q1 | Versionner les données (bronze, silver, gold ≈ 20 à 40 Mo) dans git ? | Oui (ADR-12), avec Git LFS si > 60 Mo. | Oui |
-| Q2 | Second modèle pour la comparaison ? Lequel ? | Oui si le temps le permet, un modèle plus petit disponible dans LM Studio (ex. un Gemma 4 de plus petite taille ou un Qwen 4B), évalué sur l'échantillon stratifié de 400 questions pour toutes les variantes. | Oui, j'installe qwen/qwen3.5-9b, on comparera les 2 |
+| Q2 | Second modèle pour la comparaison ? Lequel ? | Oui si le temps le permet, un modèle plus petit, évalué sur l'échantillon stratifié. | **Élargi** : quatre modèles, un par éditeur, chacun sur le jeu complet (ADR-15 et section 1.3). |
 | Q3 | Expérience « raisonnement activé » (V2, 400 questions, ≈ 1 h) ? | Oui, en fin de Phase 4. | **Abandonnée** : coût prohibitif sur le jeu complet, et incomparable sur échantillon (voir ADR-05). |
 | Q4 | Plotly 6.9 (pinné `<7`) ou 7.0 ? | 6.9 (ADR-11). | Oui |
 | Q5 | Faut-il implémenter en plus un transport « SDK `lmstudio` » pour coller littéralement à la consigne « API Python de l'outil » ? | Non : le README explique la limitation vérifiée ; l'API REST est l'API officielle de LM Studio et est pilotée depuis Python. | Non, on garde ta recommandation |
