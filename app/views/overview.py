@@ -78,10 +78,32 @@ def render(selection: queries.Selection | None) -> None:
         if summary.height > 1 and not multi_modeles
         else None
     )
+
+    # Ces cartes decrivent un run, pas la campagne : le titre le dit, sans quoi « 0,00 % de
+    # reponses inexploitables » se lirait comme un resultat d'ensemble alors que d'autres runs
+    # en produisent. Chaque infobulle rappelle en plus l'etendue sur la selection.
+    st.subheader(f"Meilleur run · {nomme_texte(best)}")
+
+    etendue_inexploitables = ""
+    etendue_temps = ""
+    if summary.height > 1:
+        pire = summary.sort("unparseable_rate", descending=True).row(0, named=True)
+        etendue_inexploitables = (
+            f" Sur les runs selectionnes, le taux va de "
+            f"{components.percent(summary['unparseable_rate'].min(), 2)} a "
+            f"{components.percent(pire['unparseable_rate'], 2)} "
+            f"({nomme_texte(pire)}) : le detail par variante est sur la page "
+            "« Variantes de prompt »."
+        )
+        etendue_temps = (
+            f" Le run le plus rapide de la selection est {nomme_texte(fastest)}, a "
+            f"{components.seconds(fastest['median_response_time'])}."
+        )
+
     components.kpi_row(
         [
             {
-                "label": "Meilleure exactitude",
+                "label": "Exactitude",
                 "value": components.percent(best["accuracy"]),
                 "help": f"{nomme_texte(best)} · intervalle de Wilson a 95 % "
                 f"{components.interval(best['wilson_lo'], best['wilson_hi'])}",
@@ -92,29 +114,31 @@ def render(selection: queries.Selection | None) -> None:
             {
                 "label": "Au-dessus du hasard",
                 "value": components.percent(best["accuracy_above_chance"]),
-                "help": "Le hasard donne 25 % aux choix multiples et 50 % au vrai/faux. "
-                "La reference est ponderee par le nombre de questions de chaque type.",
+                "help": "Exactitude de ce run moins le niveau du hasard : 25 % aux choix "
+                "multiples et 50 % au vrai/faux, pondere par le nombre de questions de "
+                "chaque type.",
                 "icon": ":material/casino:",
             },
             {
                 "label": "Reponses inexploitables",
                 "value": components.percent(best["unparseable_rate"], 2),
-                "help": "Reponses dont aucune option n'a pu etre extraite : c'est un echec de "
-                "format, distinct d'un echec de connaissance.",
+                "help": "Part des reponses de ce run dont aucune option n'a pu etre extraite : "
+                "un echec de format, distinct d'un echec de connaissance." + etendue_inexploitables,
                 "icon": ":material/help:",
                 "delta_color": "inverse",
             },
             {
                 "label": "Temps median",
                 "value": components.seconds(best["median_response_time"]),
-                "help": f"Run le plus rapide : {nomme_texte(fastest)} a "
-                f"{components.seconds(fastest['median_response_time'])}.",
+                "help": "Temps de reponse median de ce run, mesure de bout en bout cote client."
+                + etendue_temps,
                 "icon": ":material/timer:",
             },
             {
                 "label": "Questions evaluees",
                 "value": components.number(best["n"]),
-                "help": "Les quatre questions servant d'exemples few-shot sont exclues.",
+                "help": "Posees a l'identique a tous les runs. Les quatre questions servant "
+                "d'exemples few-shot sont exclues.",
                 "icon": ":material/quiz:",
             },
         ],
