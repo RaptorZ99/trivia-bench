@@ -32,7 +32,19 @@ interrogés selon la même règle : les écarts observés viennent des modèles,
 
 <!-- RESULTATS -->
 
-*(Section complétée à l'issue des runs — voir « Résultats ».)*
+**63 084 réponses** : quatre modèles × trois formulations × 5 257 questions, aucune erreur d'appel,
+aucune réponse perdue.
+
+| Modèle | Meilleure exactitude | IC 95 % | Au-dessus du hasard | Temps médian |
+|---|---|---|---|---|
+| Gemma 4 12B QAT | **73,3 %** | [72,1 ; 74,5] | +44,6 pt | 1,42 s |
+| Qwen 3.5 9B | 72,2 % | [71,0 ; 73,4] | +43,5 pt | 1,11 s |
+| Ministral 3 8B | 66,7 % | [65,4 ; 68,0] | +38,0 pt | 0,71 s |
+| Phi-4-mini 3,8B | 57,9 % | [56,6 ; 59,3] | +29,2 pt | 0,14 s |
+
+L'exactitude suit la taille sans exception, mais le prix du dernier point est élevé : Phi-4-mini
+répond **dix fois plus vite** que Gemma et tient dans trois fois moins de mémoire, pour 15 points
+d'exactitude en moins.
 
 ---
 
@@ -442,7 +454,75 @@ fixtures. La CI GitHub Actions rejoue l'ensemble sans accès réseau ni LM Studi
 
 <!-- RESULTATS_DETAIL -->
 
-*(Section complétée à l'issue des runs.)*
+Les chiffres ci-dessous portent sur les 5 257 questions évaluées, posées à l'identique aux quatre
+modèles. Toutes les proportions sont accompagnées de leur intervalle de Wilson à 95 %, et les
+comparaisons entre deux runs utilisent le test de McNemar apparié — les modèles répondent aux
+mêmes questions, seules les paires en désaccord portent de l'information.
+
+### Les douze runs
+
+| Modèle | Variante | Exactitude | IC 95 % | Hors format | Temps médian | Débit |
+|---|---|---|---|---|---|---|
+| Gemma 4 12B | V3 · JSON contraint | **73,3 %** | [72,1 ; 74,5] | 0,00 % | 1,42 s | 22,3 tok/s |
+| Qwen 3.5 9B | V3 · JSON contraint | 72,2 % | [71,0 ; 73,4] | 0,00 % | 1,11 s | 24,9 tok/s |
+| Qwen 3.5 9B | V2 · Few-shot | 71,9 % | [70,6 ; 73,1] | 0,02 % | 0,76 s | 25,8 tok/s |
+| Gemma 4 12B | V1 · Lettre seule | 71,0 % | [69,8 ; 72,2] | 1,24 % | 0,75 s | 20,6 tok/s |
+| Qwen 3.5 9B | V1 · Lettre seule | 70,8 % | [69,5 ; 72,0] | 0,00 % | 0,96 s | 24,8 tok/s |
+| Gemma 4 12B | V2 · Few-shot | 70,6 % | [69,4 ; 71,8] | 0,17 % | 0,90 s | 21,6 tok/s |
+| Ministral 3 8B | V3 · JSON contraint | 66,7 % | [65,4 ; 68,0] | 0,00 % | 0,71 s | 28,1 tok/s |
+| Ministral 3 8B | V1 · Lettre seule | 65,8 % | [64,5 ; 67,0] | 0,04 % | 0,30 s | 28,1 tok/s |
+| Ministral 3 8B | V2 · Few-shot | 62,6 % | [61,3 ; 63,9] | 0,25 % | 0,39 s | 28,2 tok/s |
+| Phi-4-mini 3,8B | V2 · Few-shot | 57,9 % | [56,6 ; 59,3] | 2,23 % | 0,14 s | 51,8 tok/s |
+| Phi-4-mini 3,8B | V1 · Lettre seule | 57,9 % | [56,5 ; 59,2] | 0,02 % | 0,17 s | 52,3 tok/s |
+| Phi-4-mini 3,8B | V3 · JSON contraint | 57,0 % | [55,7 ; 58,4] | 0,00 % | 0,38 s | 50,7 tok/s |
+
+### Ce que la taille achète, et à quel prix
+
+L'ordre des modèles suit exactement l'ordre des tailles — 12 B, 9 B, 8 B, 3,8 B — sans inversion.
+Mais l'écart n'est pas linéaire : passer de 3,8 à 8 milliards de paramètres rapporte 8,8 points,
+passer de 8 à 12 n'en rapporte que 6,6 de plus, pour un modèle trois fois plus lourd et cinq fois
+plus lent.
+
+Le compromis se lit mieux en coût : Phi-4-mini répond en 0,14 s contre 1,42 s pour Gemma, soit
+**dix fois plus vite** par question, et ses trois variantes ont demandé 1 h 02 de temps machine
+cumulé contre 4 h 34. Pour un usage où 58 % suffit, le rapport est sans appel.
+
+### La contrainte de format n'aide pas tout le monde
+
+Contraindre la sortie par un schéma JSON supprime mécaniquement les échecs de format — 0,00 % de
+réponses inexploitables pour les quatre modèles. Son effet sur l'**exactitude**, lui, dépend de la
+taille du modèle :
+
+| Modèle | V1 · Lettre seule | V3 · JSON contraint | Écart | McNemar |
+|---|---|---|---|---|
+| Gemma 4 12B | 71,0 % | 73,3 % | **+2,3 pt** | p = 7,6 × 10⁻⁹ |
+| Qwen 3.5 9B | 70,8 % | 72,2 % | **+1,4 pt** | p = 0,00078 |
+| Ministral 3 8B | 65,8 % | 66,7 % | +1,0 pt | p = 0,084 |
+| Phi-4-mini 3,8B | 57,9 % | 57,0 % | −0,9 pt | p = 0,085 |
+
+Les deux plus gros modèles gagnent significativement à être contraints ; les deux plus petits non,
+et le plus petit y perdrait plutôt. Une hypothèse compatible avec les données : la contrainte
+empêche un modèle de se dérober — de répondre « aucune de ces options » plutôt que de trancher —
+et ce gain ne se matérialise que si le modèle connaît la réponse. Sur Gemma, les 65 questions où
+la variante nue refusait de choisir sont trouvées à 44,6 % une fois la réponse imposée, bien
+au-dessus des 25 % du hasard.
+
+### Où se perd l'écart entre le plus gros et le plus petit
+
+Rien de localisé : Phi-4-mini n'est pas rattrapé sur un domaine particulier, il est uniformément
+en retrait. Sur les thèmes à effectif suffisant, l'écart avec Gemma reste dans une fourchette
+étroite — 9,7 points sur « Science & Nature », 11,0 sur « Géographie » et « Culture générale »,
+11,7 sur « Histoire », 14,1 sur « Divertissement », 15,8 sur « Science ».
+
+La miniaturisation ne coûte donc pas une capacité, elle coûte de l'étendue de rappel factuel, à
+peu près partout dans la même proportion.
+
+### Le niveau du hasard
+
+Une exactitude brute se lit mal sans son plancher : 25 % en choix multiples à quatre options, 50 %
+en vrai/faux, soit environ 28,7 % sur la composition réelle du jeu. Les quatre modèles sont très
+au-dessus — de +29,2 points pour Phi-4-mini à +44,6 pour Gemma — donc aucun ne répond au hasard,
+et l'écart entre eux reste interprétable.
 
 ---
 
