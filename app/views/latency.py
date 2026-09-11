@@ -159,11 +159,21 @@ def render(selection: queries.Selection | None) -> None:
     with right:
         st.subheader("Derive au fil du run")
         if drift.height:
+            # Une derive appartient a un run, jamais a une variante : grouper par variante
+            # ferait passer une meme courbe par les quatre modeles a chaque tranche, dont les
+            # debits vont du simple au double. Le trace en dents de scie qui en resulterait
+            # ressemblerait a une instabilite alors qu'il ne montrerait que l'ecart entre
+            # modeles.
+            drift = drift.with_columns(
+                pl.col("run_id")
+                .replace_strict(components.run_labels(summary), default=pl.col("variant_label"))
+                .alias("run_label")
+            )
             figure = charts.lines(
                 drift,
                 x="run_order_bucket",
                 y="median_tokens_per_second",
-                group="variant_label",
+                group="run_label",
                 y_title="Debit median (tokens/s)",
                 height=400,
             )
@@ -173,13 +183,19 @@ def render(selection: queries.Selection | None) -> None:
                 "ralentissement thermique de la machine, pas une propriete du modele. Le "
                 "debit est mesure par le moteur : il est insensible a ce qui se passe cote "
                 "client, la ou le temps de reponse total, lui, absorbe le moindre appel "
-                "concurrent."
+                "concurrent. Chaque courbe est un run : les tranches comptent cent appels "
+                "consecutifs, la derniere pouvant etre incomplete."
             )
 
     st.space("medium")
     st.subheader("Detail par variante et type de question")
 
-    display = by_run.sort(["variant_label", "type"]).select(
+    # Une ligne est un (run, type de question). Sans la colonne du modele, quatre lignes
+    # porteraient le meme libelle de variante avec des chiffres differents, sans rien qui
+    # permette de les distinguer.
+    colonnes = [pl.col("model_short").alias("Modele")] if multi_modeles else []
+    display = by_run.sort(["model_short", "variant_label", "type"]).select(
+        *colonnes,
         pl.col("variant_label").alias("Variante"),
         pl.col("type").replace_strict(theme.TYPE_LABELS, default="?").alias("Type"),
         pl.col("n").alias("Questions"),
