@@ -6,7 +6,11 @@ select
     prompt_variant,
     variant_label,
     reasoning_mode,
-    (run_order / 100)::integer * 100    as run_order_bucket,
+    -- Division entiere (`//`) et non `/` : en DuckDB `/` est une division flottante, et le
+    -- cast en entier arrondit au plus proche au lieu de tronquer. La tranche etiquetee 200
+    -- aurait alors contenu les appels 150 a 250, et la premiere tranche n'aurait compte que
+    -- cinquante appels au lieu de cent.
+    (run_order // 100) * 100            as run_order_bucket,
     count(*)                            as n,
     median(response_time)               as median_response_time,
     median(tokens_per_second)           as median_tokens_per_second,
