@@ -243,10 +243,14 @@ def grade_runs(
     settings: Settings,
     paths: DataPaths,
     run_id: str | None = None,
-    force: bool = False,
     console: Console | None = None,
 ) -> None:
-    """Note un run precis ou tous les runs disponibles, puis met a jour `runs.parquet`."""
+    """Note un run precis ou tous les runs disponibles, puis met a jour `runs.parquet`.
+
+    La notation est toujours refaite, meme si la partition silver existe deja : elle est
+    deterministe et coute quelques secondes, alors qu'une partition conservee au motif qu'elle
+    existe pourrait avoir ete produite par une regle de notation anterieure.
+    """
     console = console or Console()
     if run_id:
         run_ids = [run_id]
@@ -260,9 +264,6 @@ def grade_runs(
     summaries: list[dict[str, Any]] = []
 
     for identifier in run_ids:
-        partition = paths.answers_partition(identifier)
-        if partition.exists() and not force and run_id is None:
-            logger.debug("Run {} deja note, recalcul quand meme pour rester coherent", identifier)
         frame = grade_run(identifier, settings=settings, paths=paths, questions=index)
         summaries.append(_summarize(identifier, frame))
 

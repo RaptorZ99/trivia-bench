@@ -203,4 +203,4 @@ def test_fuzzy_margin_rejects_ambiguous_match() -> None:
     ],
 )
 def test_extract_letter(text: str, expected: str | None) -> None:
-    assert extract_letter(text, structured=False) == expected
+    assert extract_letter(text) == expected

@@ -192,9 +192,11 @@ def bench(
 def grade(
     run_id: Annotated[str | None, typer.Option("--run-id", help="Run a noter.")] = None,
     all_runs: Annotated[bool, typer.Option("--all", help="Note tous les runs.")] = False,
-    force: Annotated[bool, typer.Option("--force", help="Recalcule meme si deja note.")] = False,
 ) -> None:
-    """Note les reponses brutes et ecrit la couche silver (`answers/`, `runs.parquet`)."""
+    """Note les reponses brutes et ecrit la couche silver (`answers/`, `runs.parquet`).
+
+    La notation est deterministe et systematiquement refaite : il n'y a pas de cache a forcer.
+    """
     from rich.console import Console
 
     from trivia_bench.bench.silver import grade_runs
@@ -213,7 +215,6 @@ def grade(
         settings=settings,
         paths=paths,
         run_id=run_id,
-        force=force,
         console=Console(),
     )
 

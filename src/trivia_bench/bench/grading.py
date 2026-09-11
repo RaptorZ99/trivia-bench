@@ -87,16 +87,15 @@ def _has_negation_before(normalized_response: str, span: str, window: int = 2) -
     return any(token in _NEGATIONS for token in preceding)
 
 
-def extract_letter(answer: str, *, structured: bool) -> str | None:
-    """Extrait la lettre choisie, par ordre de fiabilite decroissante."""
+def extract_letter(answer: str) -> str | None:
+    """Extrait la lettre choisie, par ordre de fiabilite decroissante.
+
+    La lecture du JSON n'a pas sa place ici : `grade_answer` deballe le champ `answer` avant
+    tout autre traitement, si bien que cette fonction ne voit jamais qu'un texte deja reduit.
+    """
     text = answer.strip()
     if not text:
         return None
-
-    if structured:
-        letter = _from_json(text)
-        if letter and letter in LETTERS:
-            return letter
 
     match = _LETTER_ANCHORED.match(text)
     if match:
@@ -258,12 +257,11 @@ def grade_answer(
         payload = _from_json(answer.strip())
         if payload is not None:
             answer = payload
-            structured = False
 
     if question.type == "boolean":
         return _grade_boolean(answer, question, use_cue=answer_cue)
 
-    letter = extract_letter(answer, structured=structured)
+    letter = extract_letter(answer)
     if letter is not None and letter in LETTERS:
         correct = letter == question.correct_letter
         return GradeResult(
@@ -273,12 +271,9 @@ def grade_answer(
             predicted_text=question.options[LETTERS.index(letter)],
         )
 
-    # Le modele a ignore la consigne et ecrit le texte de l'option : on le rattrape.
+    # Le modele a ignore la consigne et ecrit le texte de l'option : on le rattrape. Le JSON
+    # eventuel a deja ete deballe plus haut, `answer` porte donc directement le texte a comparer.
     candidate = answer
-    if structured:
-        from_json = _from_json(answer.strip())
-        if from_json:
-            candidate = from_json
 
     matched = _match_option_text(
         candidate,
