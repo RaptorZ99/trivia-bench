@@ -443,9 +443,14 @@ référentielle, cohérence des comptages, et des invariants du protocole (aucun
 raisonnement quand il est désactivé, aucune question few-shot évaluée).
 
 ```bash
-uv run dbt build --project-dir dbt --profiles-dir dbt --target prod   # équivaut à make build
+make build     # construit la couche gold et la publie par remplacement atomique
 make docs      # documentation dbt autonome dans docs/dbt/index.html
 ```
+
+`make build` passe par `trivia build`, qui construit dans un fichier neuf puis le met en place
+par un remplacement atomique : un dashboard en cours de lecture n'est pas interrompu, et le
+fichier ne grossit pas d'une construction à l'autre. Invoquer `dbt build` directement écrit dans
+la base existante, que DuckDB agrandit sans jamais récupérer l'espace libéré.
 
 La documentation dbt générée (lignage, description de chaque modèle et de chaque colonne)
 est consultable hors ligne : [`docs/dbt/index.html`](docs/dbt/index.html).
