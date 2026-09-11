@@ -87,7 +87,7 @@ src/trivia_bench/     # package Python : scrape, clean, bench, build
   └── prompts/        # gabarits de prompt versionnés (fichiers texte)
 dbt/                  # projet dbt : sources, staging, marts, macros, tests
 app/                  # dashboard Streamlit (lib/ + views/)
-tests/                # 191 tests : unitaires, intégration, build dbt de bout en bout
+tests/                # 198 tests : unitaires, intégration, build dbt, rendu du dashboard
 data/                 # bronze / silver / gold, versionnés dans le dépôt
 docs/research/        # rapports de documentation ayant fondé la spécification
 ```
@@ -396,12 +396,12 @@ intervalles de Wilson et le niveau du hasard.*
 
 | Page | Question à laquelle elle répond |
 |---|---|
-| **Vue d'ensemble** | Quelle formulation obtient les meilleurs résultats, et de combien ? |
-| **Variantes de prompt** | L'écart entre deux variantes est-il réel ou dû au hasard ? (McNemar) |
-| **Thèmes et difficulté** | Sur quels domaines le modèle réussit-il ou échoue-t-il ? |
-| **Temps de réponse** | Que coûte chaque formulation, et le débit dérive-t-il ? |
-| **Explorateur de questions** | Que répond exactement le modèle, question par question ? |
-| **Comparaison de modèles** | Qu'est-ce qui distingue deux modèles, à formulation égale ? |
+| **Vue d'ensemble** | Quel modèle et quelle formulation obtiennent les meilleurs résultats, et ce que coûte chaque point d'exactitude en temps et en mémoire |
+| **Variantes de prompt** | L'écart entre deux variantes est-il réel ou dû au hasard (McNemar) ? Comment les réponses sont-elles reconnues, et leur longueur trahit-elle l'erreur ? |
+| **Thèmes et difficulté** | Sur quels domaines le modèle réussit-il, et la difficulté déclarée par OpenTDB prédit-elle la difficulté réelle ? |
+| **Temps de réponse** | Que coûte chaque formulation, et le débit dérive-t-il au fil du run ? |
+| **Explorateur de questions** | Que répond exactement le modèle, et quelles questions résistent à toutes les formulations ? |
+| **Comparaison de modèles** | Qu'est-ce qui distingue deux modèles à formulation égale, et chacun privilégie-t-il une position de réponse ? |
 | **Méthodologie** | Comment les chiffres sont-ils obtenus, et que ne disent-ils pas ? |
 
 ![Comparaison de modèles](docs/img/dashboard-comparaison-modeles.jpg)
@@ -466,9 +466,11 @@ relatifs par rapport au répertoire courant.
 make all      # ruff check + ruff format --check + mypy strict + pytest
 ```
 
-191 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
-deux clients HTTP simulés, la construction de la couche silver, et un `dbt build` complet sur des
-fixtures. La CI GitHub Actions rejoue l'ensemble sans accès réseau ni LM Studio.
+198 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
+deux clients HTTP simulés, la construction de la couche silver, un `dbt build` complet sur des
+fixtures, et le rendu sans interface des sept pages du dashboard sur la couche gold versionnée,
+tous modèles et toutes variantes sélectionnés — la configuration la plus exigeante pour une
+page. La CI GitHub Actions rejoue l'ensemble sans accès réseau ni LM Studio.
 
 ---
 

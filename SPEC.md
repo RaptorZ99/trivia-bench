@@ -936,7 +936,7 @@ Les autres marts suivent le même patron avec leur grain (section 5.3). `mart_va
 
 ### 11.1 Principes
 
-- **Une histoire, sept pages** : de la vue d'ensemble vers le détail, chaque page répond à une question métier et commence par une phrase de synthèse calculée à partir des données (ex. « V3 · JSON contraint obtient 73,3 % [72,1 ; 74,5] sur 5 257 questions »).
+- **Une histoire, sept pages** : de la vue d'ensemble vers le détail, chaque page répond à une question métier et commence par une phrase de synthèse calculée à partir des données (ex. « gemma-4-12b-qat en V3 · JSON contraint obtient 73,3 % [72,1 ; 74,5] sur 5 257 questions »). Un run est un couple modèle × variante : dès que plusieurs modèles sont sélectionnés, tout ce qui nomme un run nomme le modèle, et tout graphe qui porterait plusieurs runs sur une même abscisse les groupe ou impose un choix.
 - **Filtres globaux dans la barre latérale** (définis dans `app.py`, persistants entre pages) : modèle, mode de raisonnement, variantes visibles. Les pages ajoutent leurs filtres locaux.
 - **Cohérence visuelle** : toutes les figures passent par `lib/charts.py` (marges, police, grille discrète, fond transparent, `hovertemplate` lisible, format `.1%`, barres d'erreur Wilson asymétriques, palette du thème via `theme="streamlit"` + `chartCategoricalColors`).
 - **Accessibilité** : palettes catégorielles contrastées, textes de valeurs sur les barres, intervalles toujours affichés, `help=` sur chaque KPI.
@@ -944,53 +944,46 @@ Les autres marts suivent le même patron avec leur grain (section 5.3). `mart_va
 
 ### 11.2 API Streamlit utilisée [VÉRIFIÉ sur 1.63.0]
 
-`st.navigation` + `st.Page(fonction, title, icon=":material/...:", url_path, default)` ; `st.set_page_config(layout="wide")` ; `st.logo` ; `st.columns(gap, border, vertical_alignment)` ; `st.container(border, horizontal, gap, key)` ; `st.metric(label, value, delta, border=True, icon, format="percent", chart_data, chart_type)` ; `st.segmented_control(default=...)` ; `st.pills(default=...)` ; `st.badge(color)` ; `st.dataframe(width="stretch", column_config, on_select="rerun", selection_mode="single-row")` ; `st.column_config.ProgressColumn(format="percent")`, `NumberColumn(format="%.2f s")`, `TextColumn`, `ListColumn` ; `st.plotly_chart(fig, width="stretch", height=..., theme="streamlit", config=...)` (**pas** `use_container_width`, déprécié) ; `st.space(size)` ; `st.html` pour le CSS global ; `st.tabs` ; `st.expander` ; `st.download_button` (export CSV des tables).
+`st.navigation` + `st.Page(fonction, title, icon=":material/...:", url_path, default)` ; `st.set_page_config(layout="wide")` ; `st.columns(gap, border, vertical_alignment)` ; `st.container(border, horizontal, gap, key)` ; `st.metric(label, value, delta, border=True, icon, format="percent", chart_data, chart_type)` ; `st.segmented_control(default=...)` ; `st.pills(default=...)` ; `st.dataframe(width="stretch", column_config, on_select="rerun", selection_mode="single-row")` ; `st.column_config.ProgressColumn(format="percent")`, `NumberColumn(format="%.2f s")`, `TextColumn`, `ListColumn` ; `st.plotly_chart(fig, width="stretch", height=..., theme="streamlit", config=...)` (**pas** `use_container_width`, déprécié) ; `st.space(size)` ; `st.html` pour le CSS global ; `st.tabs` ; `st.expander` ; `st.download_button` (export CSV des tables).
 
-`.streamlit/config.toml` : `[theme]` clair (palette de base, `baseRadius`, `borderColor`, `chartCategoricalColors`, `chartSequentialColors` avec exactement 10 couleurs) + `[theme.dark]` + `[theme.sidebar]` ; `[server] enableStaticServing = true`, `[browser] gatherUsageStats = false`. Direction artistique : fond neutre, une couleur d'accent (indigo), sémantique fixe (vert = correct, rouge = faux, ambre = non parsable, gris = erreur), typographie système, cartes KPI à bordure fine.
+`.streamlit/config.toml` : `[theme]` clair (palette de base, `baseRadius`, `borderColor`, `chartCategoricalColors`, `chartSequentialColors` avec exactement 10 couleurs) + `[theme.dark]` + `[theme.sidebar]` ; `[server] enableStaticServing = false` (aucun actif statique servi), `[browser] gatherUsageStats = false`. Direction artistique : fond neutre, une couleur d'accent (indigo), sémantique fixe (vert = correct, rouge = faux, ambre = non parsable, gris = erreur), typographie système, cartes KPI à bordure fine.
 
 ### 11.3 Pages
 
+Les filtres de la barre latérale (modèles, variantes ; mode de raisonnement seulement si plusieurs sont publiés) s'appliquent à toutes les pages. Chaque page commence par une phrase de synthèse calculée à partir de la sélection.
+
 **1. Vue d'ensemble** (`overview.py`, page par défaut, icône `dashboard`)
-- Bandeau : titre, modèle, date du dernier run, nombre de questions, licence CC BY-SA.
-- 5 cartes KPI (meilleure variante) : précision (IC), précision au-dessus du hasard, taux non parsable, temps médian, tokens/s médian ; chaque carte avec `chart_data` = précision par variante en mini-barres.
-- Graphique 1 : barres « précision par variante » avec barres d'erreur Wilson, ligne du hasard pondéré, tri décroissant.
-- Graphique 2 : barres groupées « QCM vs booléen » avec baselines 25 % / 50 %.
-- Tableau récapitulatif des runs (`mart_run_summary`) avec `ProgressColumn` pour la précision, export CSV.
-- Encadré « à retenir » généré (meilleure variante, écart V1 → V2, variante la plus rapide).
+- Phrase de synthèse : meilleur run (modèle et variante), exactitude avec intervalle de Wilson, écart au hasard, écart avec le run le moins performant.
+- 5 cartes KPI du meilleur run : exactitude, au-dessus du hasard, réponses inexploitables, temps médian, questions évaluées. La mini-courbe d'exactitude par variante n'apparaît qu'avec un seul modèle sélectionné.
+- Barres groupées « exactitude par modèle et par variante » avec intervalles de Wilson et ligne du hasard pondéré ; barres « choix multiples contre vrai/faux » à variante fixée, avec les deux niveaux du hasard.
+- Nuage « ce que coûte chaque point d'exactitude » (plusieurs modèles) : un point par run, exactitude contre temps de réponse médian, une couleur par variante, surface du disque proportionnelle à la taille du modèle sur disque.
+- Tableau des runs (`mart_run_summary`, `ProgressColumn`, export CSV) et conditions d'exécution (`dim_run`).
 
-**2. Prompts** (`prompts.py`, icône `chat`)
-- Sélecteur de deux variantes à comparer (`st.pills`), phrase de synthèse avec McNemar (p-value exacte, `scipy.stats.binomtest` sur `min(b, c)`, `b + c`) et IC bootstrap de la différence (10 000 rééchantillonnages, `numpy`, mis en cache).
-- Heatmap des p-values McNemar pour toutes les paires (annotée).
-- Barres empilées « répartition des grades » par variante (letter/exact/fuzzy/contains/wrong/unparseable/error).
-- Barres « taux non parsable » avec IC.
-- Onglet « Templates » : affichage verbatim de chaque template (system + user, QCM et booléen) et d'un exemple rendu sur une question choisie.
+**2. Variantes de prompt** (`prompts.py`, icône `chat`) — quatre onglets
+- *Comparaison appariée* : choix du modèle puis de deux variantes ; phrase de synthèse avec test de McNemar (binomial exact sous 25 paires discordantes, khi-deux avec correction de continuité sinon) et intervalle bootstrap apparié de l'écart (5 000 rééchantillonnages, graine fixe) ; cartes des paires concordantes et discordantes ; matrice annotée des p-values de toutes les paires.
+- *Modes de reconnaissance* : barres empilées de la répartition des `grade` pour un modèle choisi ; conformité au format, taux d'inexploitables et exactitude sur les seules réponses exploitables, en barres groupées par modèle.
+- *Longueur des réponses* (`mart_answer_length`) : tokens générés et caractères, en moyenne pondérée, selon le verdict — juste, fausse, inexploitable — par variante, pour un modèle choisi. Répond à l'axe « longueur et précision des réponses » de l'énoncé.
+- *Gabarits* : texte versionné de chaque gabarit (système, choix multiples, vrai/faux) et version des prompts.
 
-**3. Catégories & difficulté** (`categories.py`, icône `category`)
-- Heatmap catégorie × difficulté (`px.imshow`, `text_auto=".0%"`, échelle séquentielle du thème), variante sélectionnable.
-- Barres horizontales « catégories les plus difficiles » avec IC et badge `n < 30`.
-- Barres « précision par difficulté » (easy / medium / hard) avec baseline, et note sur la calibration (corrélation ordinale calculée en Python, Spearman via scipy).
-- Tableau détaillé filtrable (catégorie, difficulté, type) avec `n`, précision, IC, au-dessus du hasard.
+**3. Thèmes et difficulté** (`categories.py`, icône `category`)
+- Run choisi (`st.segmented_control`, libellé modèle · variante) ; phrase de synthèse : thème le mieux et le moins maîtrisé, nombre de catégories sous 30 questions.
+- Carte de chaleur thème × difficulté annotée des effectifs ; classement horizontal des douze thèmes les plus difficiles avec intervalles ; exactitude par difficulté déclarée avec corrélation de rang de Spearman ; tableau détaillé avec drapeau d'effectif faible, export CSV.
 
 **4. Temps de réponse** (`latency.py`, icône `timer`)
-- KPI : médiane, p90, p95, tokens/s médian, TTFT médian.
-- Violons + boîtes du temps de réponse par variante (échelle log optionnelle), séparés QCM / booléen.
-- ECDF des temps par variante.
-- Nuage `prompt_tokens` × `response_time` (coût du prefill), coloré par variante, avec droite de tendance.
-- Courbe de dérive : médiane glissante des tokens/s et du temps de réponse selon `run_order` (par run), pour détecter un throttling thermique.
-- Tableau des latences par run et type, avec temps par token généré.
+- Phrase de synthèse (run le plus rapide et le plus lent, facteur, heures de calcul) et cartes KPI de latence.
+- Violons par variante (échelle logarithmique optionnelle ; les modèles sélectionnés y sont agrégés et la note le signale), ECDF, nuage tokens du prompt × temps de réponse, dérive du débit par tranches de cent appels avec une courbe par run, tableau par run et type de question avec colonne du modèle.
 
-**5. Explorateur de questions** (`explorer.py`, icône `search`)
-- Filtres : catégorie, difficulté, type, variante, grade, texte libre (recherche `ilike` dans la question).
-- Tableau paginé (`st.dataframe`, sélection d'une ligne) : question, bonne réponse, réponse du modèle, grade (badge coloré), temps.
-- Panneau de détail de la question sélectionnée : options avec la bonne réponse mise en évidence, et pour chaque variante la réponse brute, le grade, le temps, les tokens ; consistance inter-variantes (`mart_question_consistency`).
-- Section « questions toujours ratées » (candidates à l'ambiguïté) et « questions instables ».
+**5. Explorateur de questions** (`explorer.py`, icône `search`) — deux onglets
+- *Parcourir* : filtres runs, thèmes, difficulté, notation, texte libre ; tableau limité à 500 lignes avec sélection d'une ligne ; panneau de détail : options avec la bonne réponse, réponse de chaque run avec sa notation et son temps, raisonnement s'il existe.
+- *Questions révélatrices* (`mart_question_consistency`) : ratées par toutes les variantes, réussies par toutes, sensibles à la formulation ; tableau exportable.
 
-**6. Modèles** (`models.py`, icône `memory`, affichée seulement si `dim_run` contient ≥ 2 `model_key`)
-- Comparaison des modèles à variante égale : précision (IC), temps médian, tokens/s, radar par groupe de catégories.
-- Tableau des configurations (quantization, contexte, runtime, versions).
+**6. Comparaison de modèles** (`models.py`, icône `memory`)
+- Paire de modèles à choisir : exactitude appariée par variante avec McNemar sur l'ensemble des paires discordantes, vitesse comparée, radar par famille de thèmes, tableau détaillé. Avec un seul modèle, la section indique comment en ajouter un.
+- Effet du raisonnement (`mart_reasoning_pairwise`) : affiché seulement si des runs l'activent — aucun ici (ADR-05).
+- Biais de position (`mart_position_bias`) : pour un run choisi, part de chaque lettre parmi les bonnes réponses contre part parmi les réponses du modèle, réponses sans lettre extractible signalées, et exactitude selon la position de la bonne réponse.
+- Tableau des configurations (quantification, taille en Go, contexte, moteur, versions).
 
-**7. Méthodologie** (`methodology.py`, icône `science`)
-- Pipeline (schéma), définitions (`ai_correct`, `grade`, IC de Wilson, McNemar, baseline), paramètres de génération, manifeste des runs (versions), menaces à la validité (section 15), licence des données et attribution OpenTDB, liens vers le dépôt et la doc dbt statique.
+**7. Méthodologie** (`methodology.py`, icône `science`) — quatre onglets : pipeline, définitions (notations, mesures de temps, statistiques), protocole (décodage, séquentialité, chauffe, raisonnement, endpoints, ordre des options, few-shot, traçabilité), limites (contamination, quantification, questions datées, catégories déséquilibrées, machine unique, reproductibilité, notation automatique). Attribution OpenTDB en pied de page.
 
 ### 11.4 Accès aux données (`lib/db.py`)
 
@@ -1017,6 +1010,7 @@ Si le fichier est verrouillé (build en cours), affichage d'un message « recons
 |---|---|---|
 | Unitaires | pytest, pytest-httpx | `ids`, `normalize`, `shuffle`, `grading` (table de vérité), `prompts` (snapshots), clients HTTP (OpenTDB, LM Studio) avec réponses simulées, `manifest`, conversion JSONL → Parquet |
 | Intégration | pytest | `trivia clean` sur fixture CSV → Parquet conforme ; `trivia grade` sur fixture JSONL → Parquet conforme ; `dbt build` sur fixtures silver (dans un répertoire temporaire, `TRIVIA_SILVER_DIR`/`TRIVIA_DUCKDB_PATH` surchargés) → tables gold présentes, tests dbt verts |
+| Dashboard | pytest, `streamlit.testing.v1.AppTest` | Rendu sans interface des sept pages sur la couche gold versionnée, tous modèles et toutes variantes sélectionnés : une page écrite pour un modèle unique y superpose des barres ou relie des runs distincts, et une exception fait échouer le test. Ignoré si `data/gold/benchmark.duckdb` est absent |
 | Bout en bout (manuel, Phase 0) | `trivia check` | serveur, modèle, raisonnement désactivé, paramètres acceptés, JSON contraint, déterminisme sur 3 appels identiques |
 
 La couverture n'est pas mesurée par un outil : `pytest-cov` n'est pas installé, et un pourcentage aurait donné une fausse assurance sur du code dont l'essentiel du risque tient à la notation. C'est cette dernière qui porte l'effort, avec 70 cas de table de vérité fixant `grade` **et** `ai_correct`.
