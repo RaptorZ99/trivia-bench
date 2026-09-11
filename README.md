@@ -87,7 +87,7 @@ src/trivia_bench/     # package Python : scrape, clean, bench, build
   └── prompts/        # gabarits de prompt versionnés (fichiers texte)
 dbt/                  # projet dbt : sources, staging, marts, macros, tests
 app/                  # dashboard Streamlit (lib/ + views/)
-tests/                # 198 tests : unitaires, intégration, build dbt, rendu du dashboard
+tests/                # 206 tests : unitaires, intégration, build dbt, rendu du dashboard
 data/                 # bronze / silver / gold, versionnés dans le dépôt
 docs/research/        # rapports de documentation ayant fondé la spécification
 ```
@@ -438,9 +438,10 @@ modèle est publié, et celui du mode de raisonnement tant qu'aucun run ne l'act
 | `mart_question_consistency` | question | Questions ratées par toutes les variantes |
 | `mart_answer_length` | (run, exactitude) | Longueur de réponse et exactitude |
 
-35 tests de données accompagnent ces modèles : clés uniques, valeurs autorisées, intégrité
+36 tests de données accompagnent ces modèles : clés uniques, valeurs autorisées, intégrité
 référentielle, cohérence des comptages, et des invariants du protocole (aucun token de
-raisonnement quand il est désactivé, aucune question few-shot évaluée).
+raisonnement quand il est désactivé, aucune question few-shot évaluée, un seul moteur
+d'inférence pour tous les modèles).
 
 ```bash
 make build     # construit la couche gold et la publie par remplacement atomique
@@ -466,7 +467,7 @@ relatifs par rapport au répertoire courant.
 make all      # ruff check + ruff format --check + mypy strict + pytest
 ```
 
-198 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
+206 tests couvrent la table de vérité de la notation (70 cas), le rendu des prompts, les
 deux clients HTTP simulés, la construction de la couche silver, un `dbt build` complet sur des
 fixtures, et le rendu sans interface des sept pages du dashboard sur la couche gold versionnée,
 tous modèles et toutes variantes sélectionnés — la configuration la plus exigeante pour une

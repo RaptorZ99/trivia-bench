@@ -24,7 +24,12 @@ from rich.progress import (
 
 from trivia_bench.bench.dataset import fewshot_examples, load_questions, select_questions
 from trivia_bench.bench.lmstudio import LMStudioClient
-from trivia_bench.bench.manifest import build_manifest, load_manifest, save_manifest
+from trivia_bench.bench.manifest import (
+    build_manifest,
+    load_manifest,
+    runtime_engine,
+    save_manifest,
+)
 from trivia_bench.bench.prompts import PROMPT_VARIANTS, render_request
 from trivia_bench.bench.silver import grade_runs
 from trivia_bench.config import Settings
@@ -251,6 +256,11 @@ def run_benchmark(
             manifest.model_format = loaded.get("compatibility_type")
             manifest.model_quant = loaded.get("quantization") or manifest.model_quant
             manifest.context_length = loaded.get("loaded_context_length") or manifest.context_length
+            # Le moteur n'est connu avec certitude qu'ici : LM Studio en selectionne un par
+            # format, et c'est celui du format effectivement servi qui produit les reponses.
+            manifest.runtime_engine = (
+                runtime_engine(manifest.model_format) or manifest.runtime_engine
+            )
         logger.info(
             "Appel de chauffe : {:.2f} s · format {} · contexte {} · moteur {}",
             warmup.response_time,

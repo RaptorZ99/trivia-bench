@@ -25,7 +25,7 @@
     "reasoning": "off"
   },
   "lmstudio_version": "0.4.24+1",
-  "runtime_engine": "llama.cpp-mac-arm64-apple-metal-advsimd",
+  "runtime_engine": "llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0",
   "runtime_version": "2.34.0",
   "model_format": "gguf",
   "python_version": "3.12.1",

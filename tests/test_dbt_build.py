@@ -103,7 +103,11 @@ def _run_row(run_id: str, variant: str) -> dict[str, object]:
         "transport": "native",
         "generation_params": json.dumps({"temperature": 0}),
         "lmstudio_version": "0.4.24",
-        "runtime_engine": "llama.cpp",
+        # Identite complete du moteur, version comprise : `assert_single_runtime_engine`
+        # verifie que tous les runs partagent le meme, et une fixture au nom tronque ferait
+        # echouer un test qui porte sur une garantie du protocole, pas sur les fixtures.
+        "runtime_engine": "llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0",
+        "model_format": "gguf",
         "python_version": "3.12.0",
         "package_version": "1.0.0",
         "git_sha": None,

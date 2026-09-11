@@ -48,17 +48,44 @@ def lmstudio_version() -> str | None:
     return str(version) if version else None
 
 
-def runtime_engine() -> str | None:
-    """Moteur d'inference selectionne (`lms runtime ls`)."""
+def _selected_runtimes(output: str) -> list[tuple[str, str]]:
+    """Couples (moteur, format) marques d'une coche dans `lms runtime ls`.
+
+    La sortie est un tableau `LLM ENGINE | SELECTED | MODEL FORMAT`. La ligne d'en-tete ne
+    porte pas de coche et se trouve ecartee sans traitement particulier.
+    """
+    selected: list[tuple[str, str]] = []
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) < 2 or "✓" not in fields:
+            continue
+        selected.append((fields[0], fields[-1].upper()))
+    return selected
+
+
+def runtime_engine(model_format: str | None = None) -> str | None:
+    """Moteur d'inference qui sert un format donne (`lms runtime ls`).
+
+    LM Studio selectionne **un moteur par format** : la sortie coche simultanement le moteur
+    GGUF et le moteur MLX. Retenir la premiere ligne cochee reviendrait donc a enregistrer un
+    moteur qui n'a pas produit les reponses, et a contredire la garantie d'ADR-15 — tous les
+    modeles servis par le meme moteur. Sans format connu, la premiere ligne cochee reste le
+    repli, faute de mieux.
+    """
     if not LMS_BINARY.exists():
         return None
     output = _run([str(LMS_BINARY), "runtime", "ls"])
     if not output:
         return None
-    for line in output.splitlines():
-        if "✓" in line:
-            return line.split()[0]
-    return None
+    selected = _selected_runtimes(output)
+    if not selected:
+        return None
+    if model_format:
+        wanted = model_format.strip().upper()
+        for engine, fmt in selected:
+            if fmt == wanted:
+                return engine
+    return selected[0][0]
 
 
 def git_sha() -> str | None:
