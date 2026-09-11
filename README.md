@@ -27,7 +27,7 @@ bonnes réponses, respect du format de sortie, temps de réponse — et ce qui d
 | `mistralai/ministral-3-8b` | Mistral | 8 B | 6,06 Go |
 | `microsoft/phi-4-mini` | Microsoft | 3,8 B | 2,49 Go |
 
-Les trois sont chargés dans la même configuration, servis par le même moteur d'inférence et
+Les quatre sont chargés dans la même configuration, servis par le même moteur d'inférence et
 interrogés selon la même règle : les écarts observés viennent des modèles, pas du montage.
 
 <!-- RESULTATS -->
@@ -181,7 +181,7 @@ exige d'un même appel :
 | `/v1/chat/completions` | Oui (`reasoning_effort: "none"`) | Oui (`json_schema`) | Non |
 | **`/api/v0/chat/completions`** | **Oui** (`reasoning_effort: "none"`) | **Oui** (`json_schema`) | **Oui** (TTFT, tokens/s) |
 
-**L'endpoint découle de ce que la variante exige**, et la règle vaut à l'identique pour les deux
+**L'endpoint découle de ce que la variante exige**, et la règle vaut à l'identique pour les quatre
 modèles. Les variantes en texte court utilisent l'endpoint natif, qui rejette les clés inconnues
 et protège donc contre une faute de frappe dans un paramètre de décodage. La variante à sortie
 contrainte ne peut pas y rester — il refuse `response_format` — et passe par
@@ -196,7 +196,7 @@ contre 0,138 s, débit de 21,4 tokens par seconde de part et d'autre.
 
 Le format servi et la longueur de contexte effectivement appliquée sont relevés sur l'instance
 elle-même et consignés dans le manifeste de chaque run : ce sont eux qui garantissent que les
-deux modèles tournent bien sur le même moteur, dans la même configuration.
+quatre modèles tournent bien sur le même moteur, dans la même configuration.
 
 ### 6. Notation des réponses
 
@@ -221,18 +221,24 @@ chacune pour son type.
 | `error` | L'appel au modèle a échoué après plusieurs tentatives |
 
 **Budget de tokens et troncature.** Chaque variante fixe une longueur maximale de réponse,
-enregistrée avec chaque appel. Une réponse conforme tient en deux tokens ; le budget en accorde
-quatre fois plus. Sur la variante à instruction nue, 98,7 % des réponses font exactement deux
-tokens et 1,03 % atteignent la limite. Ces 54 réponses tronquées sont **toutes** des
-non-réponses : un refus explicite de choisir (« None of the options provided are correct »), une
-contestation de l'énoncé (« The correct answer is not provided in the… »), ou l'énumération des
-quatre lettres. Aucune n'était une réponse valide coupée en route, et aucune n'est créditée.
+enregistrée avec chaque appel : huit tokens pour les deux variantes en texte court — quatre fois
+ce qu'une réponse conforme demande — et vingt-quatre pour la variante JSON. **2,37 % des réponses
+atteignent cette limite** : 1,25 % en V1, 5,87 % en V2, et aucune en V3, le schéma bornant la
+longueur par construction.
 
-La troncature ne concerne donc que des réponses déjà hors format. La variante à sortie contrainte
-n'en produit aucune, le schéma bornant la longueur par construction. La colonne `is_truncated` de
-la couche gold permet de le vérifier à tout moment, et la notation s'en sert : le rapprochement
-par sous-chaîne y est refusé, faute de pouvoir lire la suite qui contredirait le texte reçu. La troncature se déduit de la comparaison entre tokens générés et budget demandé, plus
-fiable qu'un `finish_reason` dont la valeur dépend du moteur.
+Ces troncatures suivent deux profils, que la notation ne traite pas de la même façon :
+
+| Profil | Exemple reçu | Effet sur la notation |
+|---|---|---|
+| Le modèle répond **puis commente** | `B  *(Note: As of my` | La lettre attendue est émise en premier et reste lisible : la troncature ne coupe que le commentaire. **854 des 1 496 réponses tronquées sont créditées.** Ministral en V2 est le plus concerné (1 094 réponses, 20,8 % de son run), devant Phi-4-mini en V1 (207). |
+| Le modèle **refuse de choisir** | `None of the options provided are correct.` | Aucune lettre n'est émise, la réponse est inexploitable. Les 54 réponses tronquées de Gemma en V1 sont toutes de ce type. |
+
+La troncature n'est donc pas en soi un échec de format : elle signale surtout un modèle qui
+ajoute une justification non demandée après une réponse correcte. Elle sert malgré tout de
+garde-fou à la notation — le rapprochement par sous-chaîne y est refusé, faute de pouvoir lire la
+suite qui contredirait le texte reçu. Elle se déduit de la comparaison entre tokens générés et
+budget demandé, plus fiable qu'un `finish_reason` dont la valeur dépend du moteur, et la colonne
+`is_truncated` de la couche gold permet de vérifier l'ensemble à tout moment.
 
 La normalisation décode les entités HTML, retire les accents, la ponctuation (donc aussi la mise
 en forme Markdown que le modèle produit spontanément) et les articles. Une garde anti-négation
@@ -337,8 +343,8 @@ un run complet dure environ une heure par variante.
 | `make scrape` | Collecte OpenTDB → bronze | 20 à 35 min |
 | `make clean-data` | Bronze → `silver/questions.parquet` | quelques secondes |
 | `make check` | Vérifications LM Studio | 10 s |
-| `make bench VARIANT=v1_letter` | Une variante sur tout le jeu | ~1 h |
-| `make bench-all` | Les trois variantes | ~3 h 30 |
+| `make bench VARIANT=v1_letter` | Une variante sur tout le jeu | 15 min à 2 h selon le modèle |
+| `make bench-all` | Les trois variantes | 1 h à 4 h 40 selon le modèle |
 | `make watch` | Suit une campagne en cours, barre de progression et estimation | — |
 | `make grade` | Renote tous les runs | quelques secondes |
 | `make build` | Couche gold avec dbt | < 1 min |
@@ -353,7 +359,7 @@ uv run trivia --help
 uv run trivia scrape [--categories 9,10] [--fresh]
 uv run trivia bench --variant v3_json [--sample stratified:400]
 uv run trivia bench --variant v1_letter --resume <run_id>     # reprise après interruption
-uv run trivia grade --all [--force]
+uv run trivia grade --all
 uv run trivia prompt --variant v2_fewshot                     # affiche un prompt rendu
 ```
 
@@ -371,7 +377,7 @@ uv sync
 make scrape          # nécessite un accès à opentdb.com
 make clean-data
 make load-model && make check
-make bench-all       # ~5 h, reprenable
+make bench-all       # 1 h à 4 h 40 selon le modèle, reprenable
 make build
 make dashboard
 ```
@@ -491,11 +497,11 @@ mêmes questions, seules les paires en désaccord portent de l'information.
 
 L'ordre des modèles suit exactement l'ordre des tailles — 12 B, 9 B, 8 B, 3,8 B — sans inversion.
 Mais l'écart n'est pas linéaire : passer de 3,8 à 8 milliards de paramètres rapporte 8,8 points,
-passer de 8 à 12 n'en rapporte que 6,6 de plus, pour un modèle trois fois plus lourd et cinq fois
-plus lent.
+passer de 8 à 12 n'en rapporte que 6,6 de plus, pour un modèle 18 % plus lourd et **deux fois
+plus lent** par question (1,42 s contre 0,71 s).
 
 Le compromis se lit mieux en coût : Phi-4-mini répond en 0,14 s contre 1,42 s pour Gemma, soit
-**dix fois plus vite** par question, et ses trois variantes ont demandé 1 h 02 de temps machine
+**dix fois plus vite** par question, et ses trois variantes ont demandé 1 h 01 de temps machine
 cumulé contre 4 h 34. Pour un usage où 58 % suffit, le rapport est sans appel.
 
 ### La contrainte de format n'aide pas tout le monde
@@ -521,9 +527,10 @@ au-dessus des 25 % du hasard.
 ### Où se perd l'écart entre le plus gros et le plus petit
 
 Rien de localisé : Phi-4-mini n'est pas rattrapé sur un domaine particulier, il est uniformément
-en retrait. Sur les thèmes à effectif suffisant, l'écart avec Gemma reste dans une fourchette
-étroite — 9,7 points sur « Science & Nature », 11,0 sur « Géographie » et « Culture générale »,
-11,7 sur « Histoire », 14,1 sur « Divertissement », 15,8 sur « Science ».
+en retrait. À formulation égale (V1 contre V1) et sur les sept familles de thèmes d'au moins
+150 questions, l'écart avec Gemma reste dans une fourchette étroite — 9,7 points sur
+« Science & Nature », 11,0 sur « Géographie » et « Culture générale », 11,7 sur « Histoire »,
+12,5 sur « Sport », 14,1 sur « Divertissement », 15,8 sur « Science ».
 
 La miniaturisation ne coûte donc pas une capacité, elle coûte de l'étendue de rappel factuel, à
 peu près partout dans la même proportion.
@@ -609,8 +616,10 @@ Conventions : branches `feat/…` et `fix/…`, messages de commit
 - **Questions** : [Open Trivia Database](https://opentdb.com), licence
   [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Les données dérivées présentes
   dans `data/` sont redistribuées sous la même licence.
-- **Modèle** : Gemma 4 (Google), soumis aux
-  [Gemma Terms of Use](https://ai.google.dev/gemma/terms). Non redistribué dans ce dépôt.
+- **Modèles** : Gemma 4 (Google), soumis aux
+  [Gemma Terms of Use](https://ai.google.dev/gemma/terms) ; Qwen 3.5 (Alibaba), Ministral 3
+  (Mistral) et Phi-4-mini (Microsoft), sous leurs licences respectives. Aucun n'est redistribué
+  dans ce dépôt.
 - **Exécution locale** : [LM Studio](https://lmstudio.ai).
 - **Code** : licence MIT, voir [`LICENSE`](LICENSE).
 - **Bibliothèques principales** : uv, Polars, DuckDB, dbt, Streamlit, Plotly, httpx, tenacity,

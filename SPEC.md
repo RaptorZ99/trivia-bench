@@ -70,7 +70,7 @@ Architecture imposée : médaillon **bronze** (`questions_raw.csv`), **silver** 
 | **Réseau d'entreprise** [VÉRIFIÉ] | Le réseau du bureau (Cato Networks) **bloque `opentdb.com`** (page de blocage HTTP 403, catégorie « Games ») et intercepte le TLS (CA « Cato Networks Root CA », absente des trousseaux macOS). PyPI, GitHub, Hugging Face, hub dbt et sites de doc sont accessibles avec un TLS normal. | Le scraping (≈ 25 min) doit être lancé **depuis un autre réseau** (domicile, partage de connexion mobile). Le scraper est conçu pour reprendre après interruption. |
 | **Volume OpenTDB** [DOC, via proxy de lecture] | 5 298 questions « verified » (seul pool servi par l'API) sur 21 617 en base, 24 catégories (IDs 9 à 32), 50 questions max par appel, 1 appel / 5 s / IP. | 117 appels de données + 26 appels de service ≈ 12 min incompressibles, 20 à 35 min en pratique. |
 | **Machine** [VÉRIFIÉ] | 16 Go unifiés. Les quatre modèles pèsent 2,5 à 7,2 Go sur disque et 2,7 à 7,5 Gio en mémoire avec un contexte de 4 096 tokens. | Contexte limité à 4 096 tokens, un seul modèle chargé à la fois, exécution séquentielle. |
-| **Format des modèles** [VÉRIFIÉ] | LM Studio sert les modèles GGUF par `llama.cpp` et les modèles MLX par `mlx-llm`, deux moteurs aux performances différentes. Le build MLX de la famille `qwen3_5` ignore la longueur de contexte demandée : son ajustement automatique la réécrit vers ce que la mémoire permet (32 768 obtenus pour 4 096 demandés). | Les deux modèles évalués sont chargés en **GGUF**, avec le même contexte et le même moteur : sans quoi l'écart de latence entre modèles mesurerait aussi l'écart entre moteurs. |
+| **Format des modèles** [VÉRIFIÉ] | LM Studio sert les modèles GGUF par `llama.cpp` et les modèles MLX par `mlx-llm`, deux moteurs aux performances différentes. Le build MLX de la famille `qwen3_5` ignore la longueur de contexte demandée : son ajustement automatique la réécrit vers ce que la mémoire permet (32 768 obtenus pour 4 096 demandés). | Les quatre modèles évalués sont chargés en **GGUF**, avec le même contexte et le même moteur : sans quoi l'écart de latence entre modèles mesurerait aussi l'écart entre moteurs. |
 | **LM Studio** [VÉRIFIÉ] | Application 0.4.24, runtime `llama.cpp-mac-arm64-apple-metal-advsimd@2.34.0`, CLI `lms` dans `~/.lmstudio/bin` (pas dans le `PATH`). Serveur local sur le port 1234. Clé du modèle : `google/gemma-4-12b-qat`, architecture `gemma4`, contexte max 262 144. | Le Makefile et la CLI utilisent le chemin complet de `lms`. |
 | **Gemma 4 « thinking »** [VÉRIFIÉ] | Le raisonnement est **actif par défaut**. Sans le désactiver, le modèle consomme tout son budget de tokens en raisonnement et ne répond pas (voir annexe A). Il se désactive **par requête** avec `reasoning: "off"` (API REST native `/api/v1/chat`) ou `reasoning_effort: "none"` (endpoint compatible OpenAI). Le SDK Python `lmstudio` 1.5.0 (dernière version stable, août 2025) **ne peut pas** le désactiver et laisse fuiter un marqueur interne dans le texte de réponse. | Le client LLM utilise l'API REST de LM Studio via `httpx` (ADR-04). |
 | **Sortie structurée et statistiques** [VÉRIFIÉ] | LM Studio expose trois endpoints de complétion. `/api/v1/chat` renvoie les statistiques moteur et rejette les clés inconnues, mais refuse `response_format` (HTTP 400 `unrecognized_keys`). `/v1/chat/completions` accepte `response_format` mais ne renvoie aucun bloc `stats`. `/api/v0/chat/completions` accepte `response_format` de type `json_schema` **et** renvoie `stats`. | Une variante à sortie contrainte ne peut pas rester sur l'endpoint natif. Elle passe par `/api/v0/chat/completions`, seul des deux endpoints compatibles à renvoyer aussi les statistiques moteur : toutes les variantes portent ainsi les mêmes colonnes. |
@@ -108,7 +108,7 @@ Deux d'entre eux méritent une note. Mistral et Microsoft publient leur version 
 | **ADR-02** | Projet `uv` unique, `src/` layout, package `trivia_bench`, CLI Typer `trivia` avec une commande par étape (`scrape`, `clean`, `check`, `bench`, `grade`, `build`, `dashboard`). | Poetry, notebooks, scripts épars | `uv` déjà installé (0.10.11), lockfile reproductible, `uv sync` unique pour un coéquipier [DOC]. |
 | **ADR-03** | Polars pour toute la manipulation de données du pipeline ; pandas n'apparaît que comme dépendance transitive de Streamlit. Le dashboard lit DuckDB en Polars (`.pl()`). | pandas partout | Polars écrit le Parquet sans PyArrow, typage fort (`pl.Enum`, `pl.List`), interop DuckDB directe (`.pl()`) [VÉRIFIÉ]. Plotly Express 6.9 accepte les DataFrames Polars (via Narwhals), y compris pour `error_y` [VÉRIFIÉ]. |
 | **ADR-04** | **Client LLM = API REST de LM Studio via `httpx`. L'endpoint découle de ce que la variante exige**, et la règle s'applique à l'identique à tous les modèles : `POST /api/v1/chat` pour les variantes en texte court (`reasoning: "off"`), `POST /api/v0/chat/completions` pour la variante à sortie contrainte (`reasoning_effort: "none"` + `response_format: json_schema`). Le SDK `lmstudio` n'est pas utilisé pour l'inférence. | Tout faire passer par `/api/v0/chat/completions` ; `/v1/chat/completions` pour la sortie contrainte ; SDK Python `lmstudio` ; package `openai` | L'endpoint natif rejette `response_format` : la variante contrainte ne peut pas y rester [VÉRIFIÉ, annexe A]. Des deux endpoints qui l'acceptent, `/api/v0/chat/completions` est le seul à renvoyer aussi les statistiques moteur, ce qui garde les mêmes colonnes pour toutes les variantes. Comme la règle ne dépend que de la variante, deux modèles se comparent toujours à endpoint égal. Les deux endpoints ont par ailleurs été mesurés équivalents (section 8.1). Le SDK 1.5.0 n'expose aucun champ pour désactiver le raisonnement et renvoie celui-ci mélangé à la réponse avec un marqueur interne. Le package `openai` n'apporte rien de plus que `httpx` et masquerait les champs propres à LM Studio. |
-| **ADR-05** | **Raisonnement désactivé** pour tous les runs. L'axe « avec ou sans raisonnement » est abandonné. | Raisonnement activé partout, ou sur échantillon | Avec le raisonnement activé, le modèle génère 60 à 200 tokens de réflexion avant de répondre, soit environ 5 s par question au lieu de 0,9. Sur le jeu complet cela représenterait 7 h par variante, et 58 h pour couvrir deux modèles. Un échantillon aurait rendu cet axe incomparable aux autres, mesurés sur l'ensemble ; il est plus honnête de ne pas le traiter que de le traiter à une autre échelle. |
+| **ADR-05** | **Raisonnement désactivé** pour tous les runs. L'axe « avec ou sans raisonnement » est abandonné. | Raisonnement activé partout, ou sur échantillon | Avec le raisonnement activé, le modèle génère 60 à 200 tokens de réflexion avant de répondre, soit environ 5 s par question au lieu de 0,9. Sur le jeu complet cela représenterait environ 7 h par variante, soit plus de 80 h pour couvrir les quatre modèles sur les trois variantes. Un échantillon aurait rendu cet axe incomparable aux autres, mesurés sur l'ensemble ; il est plus honnête de ne pas le traiter que de le traiter à une autre échelle. |
 | **ADR-06** | Décodage glouton (`temperature=0`, `top_k=1`, `top_p=1`, `min_p=0`, `repeat_penalty=1.0`), instance chargée avec `--parallel 1`, exécution strictement séquentielle, premier appel de chauffe exclu des statistiques. | Sampling recommandé par Google (`temperature=1.0`, `top_p=0.95`, `top_k=64`) | Un benchmark veut la réponse la plus probable et des temps par question propres ; le batching concurrent fausse la latence et nuit à la reproductibilité [DOC]. |
 | **ADR-07** | La notation (`grade`, `ai_correct`) est calculée **une seule fois en Python** au moment d'écrire la couche silver. dbt ne fait que de l'agrégation. | Notation en SQL dans dbt | Le fuzzy matching (rapidfuzz) n'a pas d'équivalent SQL identique ; une seule implémentation testée évite deux logiques divergentes. |
 | **ADR-08** | `question_id` déterministe = `sha256` de (catégorie, type, difficulté, question, bonne réponse) normalisés. Ordre des options mélangé de façon déterministe par `random.Random(sha256(question_id))`, identique pour toutes les variantes et tous les modèles. | Index séquentiel ; `hash()` Python | OpenTDB n'a pas d'ID natif [DOC] ; `hash()` est randomisé par processus (PEP 456) ; le biais de position des LLM en QCM est documenté (Zheng et al., ICLR 2024). |
@@ -388,7 +388,7 @@ Types Polars pour silver, types DuckDB pour gold. Toutes les dates sont en UTC.
 | `prompt_variant` | str | `v1_letter`, `v2_fewshot`, `v3_json` |
 | `prompt_version` | str | contenu de `prompts/VERSION` |
 | `prompt_sha256` | str | hash du prompt rendu (system + user) |
-| `transport` | str | `native` ou `openai` |
+| `transport` | str | `native` (`/api/v1/chat`) ou `api_v0` (`/api/v0/chat/completions`) |
 | `request` | objet | paramètres envoyés (sans le texte du prompt) |
 | `response` | objet | corps JSON renvoyé par LM Studio, tel quel |
 | `response_time` | float | secondes, `time.perf_counter()` autour de l'appel HTTP |
@@ -451,14 +451,16 @@ Contraintes de validation (pydantic + tests) : `correct_answer ∉ incorrect_ans
 | `completion_tokens` | `Int32` | tokens générés (réponse + raisonnement) |
 | `reasoning_tokens` | `Int32` | doit valoir 0 si `reasoning_mode = off` (test dbt) |
 | `max_tokens` | `Int32` | budget demandé pour cet appel, sans lequel la troncature n'est pas détectable |
-| `is_truncated` | `Boolean` | budget atteint (`completion_tokens >= max_tokens`). Calculé à la notation, qui s'en sert (section 9.5), puis transmis tel quel |
+| `is_truncated` | `Boolean` | budget atteint (`completion_tokens >= max_tokens`). Calculé à la notation, qui s'en sert (section 9.4), puis transmis tel quel |
 | `finish_reason` | `String` | `stop`, `length`, … |
 | `run_order` | `Int32` | |
 | `attempt` | `Int8` | |
 | `called_at` | `Datetime(UTC)` | |
 | `error` | `String` (nullable) | |
 
-**`data/silver/runs.parquet`** — une ligne par run (aplatissement des manifestes) : `run_id`, `model_key`, `model_display_name`, `model_quant`, `model_size_bytes`, `instance_identifier`, `context_length`, `parallel`, `prompt_variant`, `prompt_version`, `reasoning_mode`, `transport`, `generation_params` (JSON string), `lmstudio_version`, `runtime_engine`, `python_version`, `package_version`, `git_sha`, `dataset_sha256`, `n_questions_planned`, `n_questions_done`, `n_errors`, `warmup_time_s`, `started_at`, `finished_at`, `machine` (JSON string : modèle de Mac, mémoire, macOS), `sample_spec` (ex. `all`, `stratified:400`, `limit:50`), `status` (`complete`, `partial`).
+**`data/silver/runs.parquet`** — une ligne par run (aplatissement des manifestes), 34 colonnes : `run_id`, `model_key`, `model_display_name`, `model_quant`, `model_format` (`gguf` ou `mlx`, relevé sur l'instance), `model_size_bytes`, `instance_identifier`, `context_length`, `parallel`, `prompt_variant`, `variant_label` (libellé lisible, repris du registre Python pour que gold ne le duplique pas), `prompt_version`, `reasoning_mode`, `transport`, `generation_params` (JSON string), `lmstudio_version`, `runtime_engine`, `python_version`, `package_version`, `git_sha`, `dataset_sha256`, `n_questions_planned`, `n_questions_done`, `n_errors`, `warmup_time_s`, `started_at`, `finished_at`, `machine` (JSON string : modèle de Mac, mémoire, macOS), `sample_spec` (ex. `all`, `stratified:400`, `limit:50`), `status` (`complete`, `partial`).
+
+Quatre colonnes ferment la boucle de configuration : `context_length_end`, `parallel_end`, `instance_identifier_end` relèvent l'état de l'instance **à la fin** du run, et `config_changed` vaut vrai si l'un des trois a bougé en cours de route. Un serveur qui recharge le modèle entre deux questions produirait sinon des mesures incomparables sans laisser de trace.
 
 ### 5.3 Gold — tables métier (DuckDB, schéma `gold`)
 
@@ -475,7 +477,7 @@ Grain et colonnes principales. Toutes les proportions sont accompagnées de `n`,
 | `mart_accuracy_by_difficulty` | (run, difficulty) | idem + `chance_baseline` | facile vs difficile, calibration de la difficulté OpenTDB |
 | `mart_accuracy_by_type` | (run, type) | idem + `chance_baseline` (0,25 / 0,5) | QCM vs vrai/faux, au-dessus du hasard |
 | `mart_grade_breakdown` | (run, grade) | `n`, `share` | comment les bonnes réponses sont reconnues, taux d'échec de format |
-| `mart_position_bias` | (run, correct_letter) et (run, predicted_letter) | `n`, `accuracy`, `share_predicted` | biais de position (QCM uniquement) |
+| `mart_position_bias` | (run, lettre) | `n_is_correct_letter`, `n_predicted`, `share_predicted`, `share_is_correct_letter`, `n_no_letter` | biais de position (QCM uniquement) : distribution des lettres prédites contre celle des bonnes réponses. `n_no_letter` porte les réponses sans lettre extractible, complément à cent des parts prédites |
 | `mart_latency_by_run` | (run, type) | `median`, `p90`, `p95`, `mean`, `stddev` de `response_time` ; médianes de `tokens_per_second`, `ttft_s`, `time_per_token`, `prompt_tokens`, `completion_tokens` | temps de réponse par variante et type |
 | `mart_latency_drift` | (run, bucket de 100 appels) | `bucket`, `median_response_time`, `median_tokens_per_second` | dérive thermique sur un run long |
 | `mart_variant_pairwise` | (model, reasoning, variant_a, variant_b) | `n`, `both_correct`, `a_only`, `b_only`, `both_wrong` | comparaison appariée de deux formulations (McNemar dans le dashboard) |
@@ -698,8 +700,8 @@ La sortie contrainte est la plus coûteuse pour les quatre modèles : elle gén�
 trivia check                                     # Phase 0 (section 14.4)
 trivia bench --variant v1_letter [--model google/gemma-4-12b-qat] [--reasoning off|on]
              [--limit N | --sample stratified:N] [--resume RUN_ID] [--max-tokens N]
-trivia bench --all-variants [--sample ...]       # boucle v1..v4, séquentiellement
-trivia grade [--run-id RUN_ID | --all] [--force] # bronze JSONL → silver answers + runs.parquet (idempotent)
+trivia bench --all-variants [--sample ...]       # boucle v1..v3, séquentiellement
+trivia grade [--run-id RUN_ID | --all]           # bronze JSONL → silver answers + runs.parquet (idempotent)
 trivia prompt --variant v2_fewshot --question-id <id>        # affiche le prompt rendu (debug/README)
 ```
 
@@ -730,7 +732,7 @@ Objectif : décider `grade` et `ai_correct` de façon déterministe, testée, et
 | `letter` | True | lettre extraite (regex ou JSON) égale à `correct_letter` |
 | `exact` | True | texte normalisé égal à la bonne réponse (ou au texte de l'option correcte) ; booléen : mot `true`/`false` exact |
 | `fuzzy` | True | `fuzz.ratio` ≥ 90 avec le texte de l'option, et écart ≥ 5 points avec la deuxième meilleure (QCM) ; booléen : la réponse entière est un synonyme (`yes`/`no`/`y`/`n`/`t`/`f`/`correct`/`incorrect`) |
-| `contains` | True | bonne réponse (≥ 3 caractères) contenue dans la réponse, une seule option citée, sans négation dans les 2 mots précédents, et réponse non tronquée (section 9.5) |
+| `contains` | True | bonne réponse (≥ 3 caractères) contenue dans la réponse, une seule option citée, sans négation dans les 2 mots précédents, et réponse non tronquée (section 9.4) |
 | `wrong` | False | une réponse a été identifiée, elle est fausse |
 | `unparseable` | False | aucune réponse identifiable (vide, refus, hors format) |
 | `error` | False | appel échoué après retries |
@@ -780,13 +782,13 @@ Garde anti-négation : `not`, `n't`, `never`, `except`, `neither`, `nor`, `isn`,
 
 Refus : deux listes distinctes, car les confondre produit des faux positifs. Une liste d'**égalités exactes** (`n/a`, `unknown`, `none`, `no answer`, `not sure`, `no comment`) — testée en sous-chaîne, « n a » ferait passer « born in austria » pour un refus. Une liste de **locutions** cherchées en sous-chaîne (`i don't know`, `cannot answer`, `no idea`, `unable to`, `impossible to say`…). Le refus est évalué **en dernier**, après avoir cherché une réponse.
 
-### 9.5 Réponses tronquées
+### 9.4 Réponses tronquées
 
 Le budget de tokens de chaque variante peut couper une réponse. Une réponse coupée est une preuve incomplète : la suite manquante peut contredire ce qui a été reçu. Le rapprochement par **sous-chaîne** est donc désactivé sur une réponse tronquée : c'est la seule règle dont le verdict puisse être renversé par la suite du texte. « The character Daryl Dixon does not have a » en est l'exemple type — l'option y est citée juste avant d'être niée, et la négation tombe hors du texte reçu.
 
 Les autres règles restent actives : une lettre ancrée en tête, une égalité exacte ou un rapprochement approché ne peuvent pas être inversés par la suite du texte. La troncature est calculée là où elle sert, au moment de la notation (`completion_tokens >= max_tokens`), et transmise à la couche gold dans `is_truncated` plutôt que recalculée en SQL.
 
-### 9.4 Tests (table de vérité)
+### 9.5 Tests (table de vérité)
 
 70 cas paramétrés couvrant : `"B"`, `"B)"`, `"(b)"`, `"B. Pomodoro"`, `"Answer: B"`, `"The answer is B"`, `"Pomodoro"`, `"pomodoro."`, `"It's Pomodoro"`, `"Not Aglio, Pomodoro"`, `"Aglio"` (wrong), `"I don't know"` (unparseable), `""`, `"True"`, `"true."`, `"Yes"`, `"False, it was Austria"`, `"Neither true nor false"` (unparseable), JSON valide/invalide, réponses avec accents et entités HTML, bonne réponse citée puis niée, et réponses tronquées (sous-chaîne refusée, lettre et exact conservés). Chaque cas fixe `grade` **et** `ai_correct`.
 
@@ -920,7 +922,7 @@ select agg.*,
 from agg
 ```
 
-Les autres marts suivent le même patron avec leur grain (section 5.3). `mart_variant_pairwise` fait une auto-jointure de `fct_answer` sur `question_id` pour deux runs de même modèle et même `reasoning_mode` (`variant_a < variant_b`) et compte les quatre cases de la table de contingence. `mart_latency_drift` utilise `floor(run_order / 100)`. `mart_position_bias` se limite à `type = 'multiple'` et croise `correct_letter` et `predicted_letter`.
+Les autres marts suivent le même patron avec leur grain (section 5.3). `mart_variant_pairwise` fait une auto-jointure de `fct_answer` sur `question_id` pour deux runs de même modèle et même `reasoning_mode` (`variant_a < variant_b`) et compte les quatre cases de la table de contingence. `mart_latency_drift` regroupe par tranches de cent avec la division **entière** `run_order // 100` : en DuckDB `/` est une division flottante, et le cast en entier arrondirait au plus proche au lieu de tronquer. `mart_position_bias` se limite à `type = 'multiple'` et croise `correct_letter` et `predicted_letter`.
 
 ### 10.4 Tests dbt
 
