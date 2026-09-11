@@ -29,6 +29,7 @@ def render(selection: queries.Selection | None) -> None:
         summary = selection.apply(queries.run_summary())
         by_category = selection.apply(queries.accuracy_by_category())
         runs = selection.apply(queries.runs())
+        bias = selection.apply(queries.position_bias())
         model_pairs = queries.model_pairwise()
         reasoning_pairs = queries.reasoning_pairwise()
     except db.DatabaseUnavailableError as exc:
@@ -45,16 +46,122 @@ def render(selection: queries.Selection | None) -> None:
             "Ajouter un modele : `scripts/chain.sh <cle>` charge, verifie et lance les trois "
             "variantes.",
         )
-        _render_configurations(runs)
-        return
+    else:
+        if model_pairs.height:
+            _render_model_comparison(model_pairs, by_category)
+        if reasoning_pairs.height:
+            _render_reasoning_comparison(reasoning_pairs)
 
-    if model_pairs.height:
-        _render_model_comparison(model_pairs, by_category)
-    if reasoning_pairs.height:
-        _render_reasoning_comparison(reasoning_pairs)
+    st.space("medium")
+    _render_position_bias(bias, summary)
 
     st.space("medium")
     _render_configurations(runs)
+
+
+def _render_position_bias(bias: pl.DataFrame, summary: pl.DataFrame) -> None:
+    """Le modele prefere-t-il une lettre, independamment de la bonne reponse ?
+
+    L'ordre des options est melange de facon deterministe : les bonnes reponses se repartissent
+    a parts egales entre A, B, C et D. Toute lettre sur-representee dans les reponses du modele
+    est donc un biais de position, pas un effet du jeu de questions.
+    """
+    st.subheader("Biais de position en choix multiples")
+    if bias.height == 0:
+        components.empty_state("Pas de donnees de position pour cette selection.")
+        return
+
+    labels = components.run_labels(summary)
+    disponibles = set(bias["run_id"].to_list())
+    run_ids = [
+        run
+        for run in summary.sort("accuracy", descending=True)["run_id"].to_list()
+        if run in disponibles
+    ]
+    if not run_ids:
+        components.empty_state("Pas de donnees de position pour cette selection.")
+        return
+    choix = st.segmented_control(
+        "Run",
+        options=run_ids,
+        default=run_ids[0],
+        format_func=lambda value: labels.get(value, value),
+        key="bias_run",
+    )
+    part = (
+        bias.filter(pl.col("run_id") == (choix or run_ids[0]))
+        .with_columns(
+            (pl.col("share_predicted") - pl.col("share_is_correct_letter")).alias("ecart")
+        )
+        .sort("letter")
+    )
+
+    def signe(value: float) -> str:
+        return ("+" if value >= 0 else "") + components.percent(value)
+
+    plus = part.sort("ecart", descending=True).row(0, named=True)
+    moins = part.sort("ecart").row(0, named=True)
+    n_sans_lettre = int(part["n_no_letter"].max() or 0)
+    theme.lede(
+        "Les bonnes reponses se repartissent a parts egales entre les quatre lettres. Le modele, "
+        f"lui, repond <strong>{plus['letter']}</strong> dans "
+        f"{components.percent(plus['share_predicted'])} des cas "
+        f"({signe(plus['ecart'])} par rapport a la part de bonnes reponses en {plus['letter']}) "
+        f"et <strong>{moins['letter']}</strong> dans "
+        f"{components.percent(moins['share_predicted'])} ({signe(moins['ecart'])})."
+    )
+
+    long = pl.concat(
+        [
+            part.select(
+                pl.col("letter"),
+                pl.col("share_is_correct_letter").alias("share"),
+                pl.lit("Bonne reponse").alias("serie"),
+            ),
+            part.select(
+                pl.col("letter"),
+                pl.col("share_predicted").alias("share"),
+                pl.lit("Reponse du modele").alias("serie"),
+            ),
+        ]
+    )
+    left, right = st.columns(2, gap="medium")
+    with left:
+        figure = charts.grouped_accuracy_bar(
+            long,
+            x="letter",
+            group="serie",
+            y="share",
+            lo=None,
+            hi=None,
+            text=True,
+            y_label="Part",
+            height=340,
+        )
+        figure.update_yaxes(range=[0, 0.5])
+        components.chart(figure, key="bias_shares")
+        theme.note(
+            "Part de chaque lettre parmi les bonnes reponses, et parmi les reponses du modele."
+            + (
+                f" {n_sans_lettre} reponse(s) sans lettre extractible ne sont pas comptees."
+                if n_sans_lettre
+                else ""
+            )
+        )
+    with right:
+        figure = charts.accuracy_bar(
+            part.rename({"accuracy_when_correct_letter": "accuracy", "n_is_correct_letter": "n"}),
+            x="letter",
+            lo=None,
+            hi=None,
+            height=340,
+        )
+        components.chart(figure, key="bias_accuracy")
+        theme.note(
+            "Exactitude selon la position de la bonne reponse. Un modele sans biais reussit "
+            "autant quelle que soit la lettre ; une lettre delaissee est aussi moins souvent "
+            "trouvee quand elle est la bonne."
+        )
 
 
 def _render_model_comparison(pairs: pl.DataFrame, by_category: pl.DataFrame) -> None:
@@ -311,7 +418,9 @@ def _render_configurations(runs: pl.DataFrame) -> None:
     display = runs.select(
         pl.col("model_key").alias("Modele"),
         pl.col("model_quant").alias("Quantification"),
-        (pl.col("model_size_bytes") / 1024**3).alias("Taille"),
+        # En gigaoctets decimaux, l'unite dans laquelle LM Studio et le README annoncent les
+        # tailles : 7,15 Go pour Gemma, et non 6,66 Gio.
+        (pl.col("model_size_bytes") / 1e9).alias("Taille"),
         pl.col("context_length").alias("Contexte"),
         pl.col("variant_label").alias("Variante"),
         pl.col("reasoning_label").alias("Raisonnement"),

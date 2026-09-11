@@ -65,16 +65,25 @@ def render(selection: queries.Selection | None) -> None:
         lede += " C'est pour l'instant le seul run evalue."
     theme.lede(lede)
 
-    # La courbe de contexte n'a de sens qu'a partir de deux variantes comparees.
+    def nomme_texte(ligne: dict[str, object]) -> str:
+        """Meme regle que `nomme`, sans balise : pour les infobulles des cartes."""
+        if multi_modeles:
+            return f"{ligne['model_short']} en {ligne['variant_label']}"
+        return str(ligne["variant_label"])
+
+    # La mini-courbe compare les variantes d'un meme modele. Avec plusieurs modeles, elle
+    # alignerait douze runs sans ordre lisible : elle est reservee au cas a un seul modele.
     accuracy_series = (
-        summary.sort("prompt_variant")["accuracy"].to_list() if summary.height > 1 else None
+        summary.sort("prompt_variant")["accuracy"].to_list()
+        if summary.height > 1 and not multi_modeles
+        else None
     )
     components.kpi_row(
         [
             {
                 "label": "Meilleure exactitude",
                 "value": components.percent(best["accuracy"]),
-                "help": f"{best['variant_label']} · intervalle de Wilson a 95 % "
+                "help": f"{nomme_texte(best)} · intervalle de Wilson a 95 % "
                 f"{components.interval(best['wilson_lo'], best['wilson_hi'])}",
                 "icon": ":material/trophy:",
                 "chart_data": accuracy_series,
@@ -98,7 +107,7 @@ def render(selection: queries.Selection | None) -> None:
             {
                 "label": "Temps median",
                 "value": components.seconds(best["median_response_time"]),
-                "help": f"Variante la plus rapide : {fastest['variant_label']} a "
+                "help": f"Run le plus rapide : {nomme_texte(fastest)} a "
                 f"{components.seconds(fastest['median_response_time'])}.",
                 "icon": ":material/timer:",
             },
@@ -173,6 +182,41 @@ def render(selection: queries.Selection | None) -> None:
             if multi_modeles:
                 note += f" Comparaison faite a variante egale, sur {libelle}."
             theme.note(note)
+
+    if multi_modeles:
+        st.space("medium")
+        st.subheader("Ce que coute chaque point d'exactitude")
+        # Un point par run : a variante egale (meme couleur), le compromis exactitude contre
+        # vitesse se lit directement, et la taille du disque rappelle le cout memoire.
+        frontier = summary.join(
+            runs.select("run_id", "model_size_bytes"), on="run_id", how="inner"
+        ).with_columns((pl.col("model_size_bytes") / 1e9).alias("size_gb"))
+        figure = charts.tradeoff_scatter(
+            frontier,
+            x="median_response_time",
+            y="accuracy",
+            size="size_gb",
+            label="model_short",
+            group="variant_label",
+            x_title="Temps de reponse median",
+            y_title="Exactitude",
+            size_title="Taille sur disque",
+            height=440,
+        )
+        components.chart(figure, key="overview_tradeoff")
+        slowest = summary.sort("median_response_time", descending=True).row(0, named=True)
+        facteur = float(slowest["median_response_time"]) / max(
+            float(fastest["median_response_time"]), 1e-9
+        )
+        theme.note(
+            "Un point par run, la surface du disque suivant la taille du modele sur disque. A "
+            "variante egale (meme couleur), plus haut et plus a gauche est meilleur. "
+            f"{nomme_texte(fastest)} repond en "
+            f"{components.seconds(fastest['median_response_time'])} contre "
+            f"{components.seconds(slowest['median_response_time'])} pour "
+            f"{nomme_texte(slowest)}, soit un facteur {facteur:.0f}, pour un ecart "
+            f"d'exactitude de {components.percent(slowest['accuracy'] - fastest['accuracy'])}."
+        )
 
     st.space("medium")
     st.subheader("Detail des runs")

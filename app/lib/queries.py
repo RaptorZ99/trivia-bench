@@ -58,6 +58,14 @@ def grade_breakdown() -> pl.DataFrame:
     return db.table("gold.mart_grade_breakdown")
 
 
+def answer_length() -> pl.DataFrame:
+    return db.table("gold.mart_answer_length")
+
+
+def position_bias() -> pl.DataFrame:
+    return db.table("gold.mart_position_bias")
+
+
 def latency_by_run() -> pl.DataFrame:
     return db.table("gold.mart_latency_by_run")
 

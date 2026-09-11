@@ -163,36 +163,49 @@ def grouped_accuracy_bar(
     x: str,
     group: str,
     y: str = "accuracy",
-    lo: str = "wilson_lo",
-    hi: str = "wilson_hi",
+    lo: str | None = "wilson_lo",
+    hi: str | None = "wilson_hi",
     baselines: dict[str, float] | None = None,
     height: int = 400,
+    text: bool = False,
+    y_label: str = "Exactitude",
 ) -> go.Figure:
-    """Barres groupees : une couleur par serie, avec intervalles de confiance."""
+    """Barres groupees : une couleur par serie, intervalles de confiance quand ils existent.
+
+    Des que plusieurs runs partagent une abscisse, une barre simple les superposerait et ne
+    laisserait voir que le dernier trace : le groupage est la seule facon de montrer chaque
+    run. `lo` et `hi` valent `None` pour les taux sans intervalle (conformite, longueur).
+    """
     figure = base_figure(height, showlegend=True)
+    with_error = lo is not None and hi is not None and lo in frame.columns and hi in frame.columns
     for index, (key, part) in enumerate(sorted(frame.group_by(group), key=lambda item: item[0])):
         label = key[0] if isinstance(key, tuple) else key
+        error_y = None
+        if with_error:
+            error_y = {
+                "type": "data",
+                "symmetric": False,
+                "array": [
+                    h - v for h, v in zip(part[hi].to_list(), part[y].to_list(), strict=True)
+                ],
+                "arrayminus": [
+                    v - low for low, v in zip(part[lo].to_list(), part[y].to_list(), strict=True)
+                ],
+                "color": "rgba(128,128,128,0.6)",
+                "thickness": 1.3,
+                "width": 3,
+            }
         figure.add_trace(
             go.Bar(
                 name=str(label),
                 x=part[x].to_list(),
                 y=part[y].to_list(),
                 marker_color=theme.CATEGORICAL[index % len(theme.CATEGORICAL)],
-                error_y={
-                    "type": "data",
-                    "symmetric": False,
-                    "array": [
-                        h - v for h, v in zip(part[hi].to_list(), part[y].to_list(), strict=True)
-                    ],
-                    "arrayminus": [
-                        v - low
-                        for low, v in zip(part[lo].to_list(), part[y].to_list(), strict=True)
-                    ],
-                    "color": "rgba(128,128,128,0.6)",
-                    "thickness": 1.3,
-                    "width": 3,
-                },
-                hovertemplate=f"<b>{label}</b> · %{{x}}<br>Exactitude : %{{y:.1%}}<extra></extra>",
+                error_y=error_y,
+                texttemplate="%{y:.1%}" if text else None,
+                textposition="outside" if text else None,
+                cliponaxis=False,
+                hovertemplate=f"<b>{label}</b> · %{{x}}<br>{y_label} : %{{y:.1%}}<extra></extra>",
             )
         )
     figure.update_layout(barmode="group")
@@ -434,4 +447,98 @@ def matrix_annotated(
     figure.update_xaxes(showgrid=False, side="top")
     figure.update_yaxes(showgrid=False, autorange="reversed")
     figure.update_layout(margin={"l": 8, "r": 8, "t": 42, "b": 8})
+    return figure
+
+
+def grouped_value_bar(
+    frame: pl.DataFrame,
+    *,
+    x: str,
+    group: str,
+    y: str,
+    y_title: str,
+    y_suffix: str = "",
+    colors: dict[str, str] | None = None,
+    height: int = 360,
+) -> go.Figure:
+    """Barres groupees pour une grandeur qui n'est pas un pourcentage (tokens, caracteres)."""
+    figure = base_figure(height, showlegend=True)
+    for index, (key, part) in enumerate(sorted(frame.group_by(group), key=lambda item: item[0])):
+        label = str(key[0] if isinstance(key, tuple) else key)
+        color = (colors or {}).get(label, theme.CATEGORICAL[index % len(theme.CATEGORICAL)])
+        figure.add_trace(
+            go.Bar(
+                name=label,
+                x=part[x].to_list(),
+                y=part[y].to_list(),
+                marker_color=color,
+                texttemplate="%{y:.1f}",
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate=(
+                    f"<b>{label}</b> · %{{x}}<br>{y_title} : %{{y:.2f}}{y_suffix}<extra></extra>"
+                ),
+            )
+        )
+    figure.update_layout(barmode="group")
+    figure.update_yaxes(title=y_title, ticksuffix=y_suffix, rangemode="tozero")
+    return figure
+
+
+def tradeoff_scatter(
+    frame: pl.DataFrame,
+    *,
+    x: str,
+    y: str,
+    size: str,
+    label: str,
+    group: str,
+    x_title: str,
+    y_title: str,
+    size_title: str,
+    height: int = 440,
+) -> go.Figure:
+    """Nuage exactitude contre vitesse : un point par run, une couleur par variante.
+
+    La surface du disque suit la taille du modele sur disque, pour que le compromis se lise
+    d'un coup d'oeil : plus haut et plus a gauche est meilleur, plus gros est plus lourd.
+    """
+    figure = base_figure(height, showlegend=True)
+    sizes = frame[size].to_list()
+    smallest, largest = min(sizes), max(sizes)
+    span = max(largest - smallest, 1e-9)
+
+    def diameter(value: float) -> float:
+        return 14 + 22 * (value - smallest) / span
+
+    for index, key in enumerate(sorted(frame[group].unique().to_list())):
+        part = frame.filter(pl.col(group) == key)
+        color = theme.CATEGORICAL[index % len(theme.CATEGORICAL)]
+        figure.add_trace(
+            go.Scatter(
+                name=str(key),
+                x=part[x].to_list(),
+                y=part[y].to_list(),
+                mode="markers+text",
+                text=part[label].to_list(),
+                textposition="top center",
+                textfont={"size": 11},
+                customdata=part[size].to_list(),
+                marker={
+                    "size": [diameter(value) for value in part[size].to_list()],
+                    "color": with_alpha(color, 0.55),
+                    "line": {"width": 1.5, "color": color},
+                },
+                hovertemplate=(
+                    "<b>%{text}</b> · " + str(key) + "<br>"
+                    f"{y_title} : %{{y:.1%}}<br>{x_title} : %{{x:.2f}} s<br>"
+                    f"{size_title} : %{{customdata:.2f}} Go<extra></extra>"
+                ),
+            )
+        )
+    figure.update_xaxes(
+        title=x_title, ticksuffix=" s", showgrid=True, gridcolor=GRID, rangemode="tozero"
+    )
+    figure.update_yaxes(title=y_title, tickformat=".0%")
+    figure.update_layout(margin={"l": 8, "r": 24, "t": 28, "b": 8})
     return figure
