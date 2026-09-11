@@ -195,5 +195,5 @@ ce qui permet de les auditer.
     st.divider()
     st.caption(
         "Donnees de questions : Open Trivia Database, licence CC BY-SA 4.0 · https://opentdb.com "
-        "· Modele execute localement via LM Studio."
+        "· Modeles executes localement via LM Studio."
     )

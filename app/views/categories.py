@@ -32,7 +32,7 @@ def render(selection: queries.Selection | None) -> None:
         components.empty_state("Aucun run ne correspond aux filtres selectionnes.")
         return
 
-    labels = dict(zip(summary["run_id"].to_list(), summary["variant_label"].to_list(), strict=True))
+    labels = components.run_labels(summary)
     run_ids = summary.sort("accuracy", descending=True)["run_id"].to_list()
     run_id = st.segmented_control(
         "Run analyse",

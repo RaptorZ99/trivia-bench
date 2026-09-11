@@ -42,7 +42,7 @@ def render(selection: queries.Selection | None) -> None:
 
 def _render_browser(summary: pl.DataFrame, questions: pl.DataFrame) -> None:
     """Tableau filtrable des reponses, avec panneau de detail."""
-    labels = dict(zip(summary["run_id"].to_list(), summary["variant_label"].to_list(), strict=True))
+    labels = components.run_labels(summary)
     run_ids = summary.sort("accuracy", descending=True)["run_id"].to_list()
 
     filters = st.columns([2, 2, 2, 2, 3], gap="small")

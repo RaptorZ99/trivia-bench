@@ -450,6 +450,8 @@ Contraintes de validation (pydantic + tests) : `correct_answer ∉ incorrect_ans
 | `prompt_tokens` | `Int32` | |
 | `completion_tokens` | `Int32` | tokens générés (réponse + raisonnement) |
 | `reasoning_tokens` | `Int32` | doit valoir 0 si `reasoning_mode = off` (test dbt) |
+| `max_tokens` | `Int32` | budget demandé pour cet appel, sans lequel la troncature n'est pas détectable |
+| `is_truncated` | `Boolean` | budget atteint (`completion_tokens >= max_tokens`). Calculé à la notation, qui s'en sert (section 9.5), puis transmis tel quel |
 | `finish_reason` | `String` | `stop`, `length`, … |
 | `run_order` | `Int32` | |
 | `attempt` | `Int8` | |

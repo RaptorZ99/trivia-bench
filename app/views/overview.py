@@ -12,7 +12,7 @@ def render(selection: queries.Selection | None) -> None:
     """Affiche la synthese du benchmark."""
     theme.page_header(
         "Vue d'ensemble",
-        "Performance globale du modele selon la facon dont la question lui est posee.",
+        "Performance des modeles evalues, selon la facon dont la question leur est posee.",
     )
 
     if selection is None:
@@ -39,8 +39,17 @@ def render(selection: queries.Selection | None) -> None:
     worst = summary.row(summary.height - 1, named=True)
     fastest = summary.sort("median_response_time").row(0, named=True)
 
+    # Un run est un couple modele x variante : le nommer par sa seule variante prete a
+    # confusion des que plusieurs modeles sont evalues.
+    multi_modeles = summary["model_short"].n_unique() > 1
+
+    def nomme(ligne: dict[str, object]) -> str:
+        if multi_modeles:
+            return f"<strong>{ligne['model_short']}</strong> en {ligne['variant_label']}"
+        return f"<strong>{ligne['variant_label']}</strong>"
+
     lede = (
-        f"La variante <strong>{best['variant_label']}</strong> obtient "
+        f"{nomme(best)} obtient "
         f"<strong>{components.percent(best['accuracy'])}</strong> de bonnes reponses "
         f"{components.interval(best['wilson_lo'], best['wilson_hi'])} sur "
         f"{components.number(best['n'])} questions, soit "
@@ -48,13 +57,12 @@ def render(selection: queries.Selection | None) -> None:
     )
     if summary.height > 1:
         lede += (
-            f" L'ecart avec la variante la moins performante "
-            f"(<strong>{worst['variant_label']}</strong>, "
+            f" L'ecart avec le run le moins performant ({nomme(worst)}, "
             f"{components.percent(worst['accuracy'])}) atteint "
             f"{components.percent(best['accuracy'] - worst['accuracy'])}."
         )
     else:
-        lede += " C'est pour l'instant la seule variante evaluee."
+        lede += " C'est pour l'instant le seul run evalue."
     theme.lede(lede)
 
     # La courbe de contexte n'a de sens qu'a partir de deux variantes comparees.
@@ -109,14 +117,31 @@ def render(selection: queries.Selection | None) -> None:
     left, right = st.columns([3, 2], gap="medium")
 
     with left:
-        st.subheader("Exactitude par variante de prompt")
-        figure = charts.accuracy_bar(
-            summary.sort("accuracy", descending=True),
-            x="variant_label",
-            baseline=float(summary["chance_baseline"].mean() or 0.25),
-            baseline_label="niveau du hasard",
-            height=380,
+        titre = (
+            "Exactitude par modele et par variante"
+            if multi_modeles
+            else ("Exactitude par variante de prompt")
         )
+        st.subheader(titre)
+        socle = float(summary["chance_baseline"].mean() or 0.25)
+        if multi_modeles:
+            # Grouper par variante : sans cela plusieurs runs partageraient la meme abscisse
+            # et leurs barres se superposeraient.
+            figure = charts.grouped_accuracy_bar(
+                summary,
+                x="model_short",
+                group="variant_label",
+                baselines={"niveau du hasard": socle},
+                height=380,
+            )
+        else:
+            figure = charts.accuracy_bar(
+                summary.sort("accuracy", descending=True),
+                x="variant_label",
+                baseline=socle,
+                baseline_label="niveau du hasard",
+                height=380,
+            )
         components.chart(figure, key="overview_variants")
         theme.note(
             "Les moustaches representent l'intervalle de Wilson a 95 %. Deux barres dont les "
@@ -127,22 +152,27 @@ def render(selection: queries.Selection | None) -> None:
     with right:
         st.subheader("Choix multiples contre vrai/faux")
         if by_type.height:
+            # A variante fixee, sans quoi chaque abscisse porterait plusieurs runs.
+            variante = str(best["prompt_variant"])
+            libelle = str(best["variant_label"])
+            trace = by_type.filter(pl.col("prompt_variant") == variante).with_columns(
+                pl.col("type").replace_strict(theme.TYPE_LABELS, default="?").alias("type_label")
+            )
             figure = charts.grouped_accuracy_bar(
-                by_type.with_columns(
-                    pl.col("type")
-                    .replace_strict(theme.TYPE_LABELS, default="?")
-                    .alias("type_label")
-                ),
-                x="variant_label",
+                trace,
+                x="model_short" if multi_modeles else "variant_label",
                 group="type_label",
                 baselines={"hasard QCM : 25 %": 0.25, "hasard vrai/faux : 50 %": 0.5},
                 height=380,
             )
             components.chart(figure, key="overview_types")
-            theme.note(
+            note = (
                 "Une bonne reponse sur deux au vrai/faux ne vaut pas une bonne reponse sur "
                 "deux au QCM : le hasard rapporte deja 50 % dans le premier cas."
             )
+            if multi_modeles:
+                note += f" Comparaison faite a variante egale, sur {libelle}."
+            theme.note(note)
 
     st.space("medium")
     st.subheader("Detail des runs")

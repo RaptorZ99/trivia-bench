@@ -35,10 +35,19 @@ def render(selection: queries.Selection | None) -> None:
     slowest = summary.sort("median_response_time", descending=True).row(0, named=True)
     total_hours = float(summary["total_duration_s"].sum() or 0) / 3600
 
+    # Le run le plus rapide n'est pas « une variante » des que plusieurs modeles sont
+    # evalues : le nommer ainsi attribuerait a la formulation ce qui vient du modele.
+    multi_modeles = summary["model_short"].n_unique() > 1
+
+    def nomme(ligne: dict[str, object]) -> str:
+        if multi_modeles:
+            return f"<strong>{ligne['model_short']}</strong> en {ligne['variant_label']}"
+        return f"<strong>{ligne['variant_label']}</strong>"
+
     theme.lede(
-        f"La variante la plus rapide est <strong>{fastest['variant_label']}</strong> "
-        f"({components.seconds(fastest['median_response_time'])} en mediane), la plus lente "
-        f"<strong>{slowest['variant_label']}</strong> "
+        f"Le run le plus rapide est {nomme(fastest)} "
+        f"({components.seconds(fastest['median_response_time'])} en mediane), le plus lent "
+        f"{nomme(slowest)} "
         f"({components.seconds(slowest['median_response_time'])}), soit un facteur "
         f"{slowest['median_response_time'] / max(fastest['median_response_time'], 1e-9):.1f}. "
         f"L'ensemble des runs affiches represente {total_hours:.1f} h de calcul."
@@ -99,6 +108,13 @@ def render(selection: queries.Selection | None) -> None:
             theme.note(
                 "Le trait epais est l'intervalle interquartile, le trait fin l'etendue. "
                 "Le premier appel de chaque run, qui paie la mise en cache, est exclu."
+                + (
+                    " Chaque violon agrege les modeles selectionnes, dont les vitesses "
+                    "different : une forme a plusieurs bosses traduit cet ecart, pas une "
+                    "instabilite de la variante."
+                    if multi_modeles
+                    else ""
+                )
             )
 
     with right:

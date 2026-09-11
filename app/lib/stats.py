@@ -35,7 +35,11 @@ def mcnemar(a_only: int, b_only: int) -> McNemarResult:
     Seules les paires discordantes portent de l'information : les questions reussies ou ratees
     par les deux variantes n'aident pas a les departager. En dessous de 25 paires discordantes,
     le test binomial exact est prefere a l'approximation du khi-deux.
+
+    Les comptages arrivent de DuckDB en decimal ; scipy refuse ce type. La conversion est faite
+    ici plutot que chez chaque appelant, la signature promettant deja des entiers.
     """
+    a_only, b_only = int(a_only), int(b_only)
     n = a_only + b_only
     if n == 0:
         return McNemarResult(0, a_only, b_only, 1.0, "aucune paire discordante")

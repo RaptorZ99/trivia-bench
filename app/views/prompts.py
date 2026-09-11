@@ -17,7 +17,7 @@ def render(selection: queries.Selection | None) -> None:
     """Compare les variantes entre elles, avec un test apparie."""
     theme.page_header(
         "Variantes de prompt",
-        "Une meme question posee de cinq facons differentes : qu'est-ce qui change vraiment ?",
+        "Une meme question posee de trois facons differentes : qu'est-ce qui change vraiment ?",
     )
 
     if selection is None:
@@ -63,6 +63,15 @@ def _render_comparison(summary: pl.DataFrame, pairwise: pl.DataFrame) -> None:
     )
     options = sorted(labels)
 
+    # Une paire de variantes existe pour chaque modele : sans ce choix, la page en retiendrait
+    # un au hasard et afficherait un ecart sans dire de quel modele il parle.
+    modeles = sorted(pairwise["model_short"].unique().to_list())
+    if len(modeles) > 1:
+        modele = st.selectbox("Modele", modeles, index=0)
+        pairwise = pairwise.filter(pl.col("model_short") == modele)
+    else:
+        modele = modeles[0]
+
     left, right = st.columns(2, gap="medium")
     with left:
         variant_a = st.selectbox(
@@ -102,8 +111,9 @@ def _render_comparison(summary: pl.DataFrame, pairwise: pl.DataFrame) -> None:
     )
 
     verdict = "significatif" if result.significant else "non significatif"
+    prefixe = f"Sur <strong>{modele}</strong>, " if len(modeles) > 1 else ""
     theme.lede(
-        f"Sur {components.number(record['n'])} questions communes, "
+        f"{prefixe}sur {components.number(record['n'])} questions communes, "
         f"<strong>{labels[variant_a]}</strong> atteint "
         f"{components.percent(accuracy_a)} et <strong>{labels[variant_b]}</strong> "
         f"{components.percent(accuracy_b)}. L'ecart de "

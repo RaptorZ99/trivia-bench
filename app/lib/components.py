@@ -67,6 +67,27 @@ def interval(lo: float | None, hi: float | None) -> str:
     return f"[{percent(lo, 1)} · {percent(hi, 1)}]"
 
 
+def run_labels(summary: pl.DataFrame) -> dict[str, str]:
+    """Libelle lisible de chaque run, pour les selecteurs.
+
+    Un run est un couple modele x variante. Nommer un selecteur par la seule variante
+    afficherait autant de libelles identiques que de modeles evalues : le modele n'est donc
+    ajoute que lorsqu'il y en a plusieurs, pour ne pas alourdir le cas a un seul modele.
+    """
+    modeles = summary["model_short"].unique().to_list()
+    if len(modeles) > 1:
+        return {
+            run: f"{modele} · {variante}"
+            for run, modele, variante in zip(
+                summary["run_id"].to_list(),
+                summary["model_short"].to_list(),
+                summary["variant_label"].to_list(),
+                strict=True,
+            )
+        }
+    return dict(zip(summary["run_id"].to_list(), summary["variant_label"].to_list(), strict=True))
+
+
 def empty_state(message: str, hint: str = "") -> None:
     """Message affiche quand une selection ne renvoie aucune donnee."""
     st.info(message, icon=":material/filter_alt_off:")
