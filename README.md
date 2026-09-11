@@ -382,6 +382,12 @@ make dashboard
 
 `make dashboard` puis <http://localhost:8501>. Sept pages, thème clair et sombre :
 
+![Vue d'ensemble du dashboard](docs/img/dashboard-vue-ensemble.jpg)
+
+*Vue d'ensemble : exactitude des quatre modèles pour chacune des trois formulations, avec les
+intervalles de Wilson et le niveau du hasard.*
+
+
 | Page | Question à laquelle elle répond |
 |---|---|
 | **Vue d'ensemble** | Quelle formulation obtient les meilleurs résultats, et de combien ? |
@@ -391,6 +397,11 @@ make dashboard
 | **Explorateur de questions** | Que répond exactement le modèle, question par question ? |
 | **Comparaison de modèles** | Qu'est-ce qui distingue deux modèles, à formulation égale ? |
 | **Méthodologie** | Comment les chiffres sont-ils obtenus, et que ne disent-ils pas ? |
+
+![Comparaison de modèles](docs/img/dashboard-comparaison-modeles.jpg)
+
+*Comparaison de modèles : test apparié à formulation égale, vitesse comparée et profil par
+famille de thèmes.*
 
 Les filtres de la barre latérale s'appliquent à toutes les pages. Ils n'apparaissent que
 lorsqu'ils ont quelque chose à filtrer : le sélecteur de modèle reste caché tant qu'un seul
